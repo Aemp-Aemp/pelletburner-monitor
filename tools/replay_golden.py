@@ -11,8 +11,10 @@ On a recording of your own (keep --dir outside the repo: it holds real readings)
     py tools\\replay_golden.py --data <data-folder> --from ... --to ... --at ... --dir C:\\temp\\golden-before
 
 Uses tools/replay.py: no serial port, nothing is sent. Values that follow the PC's own clock or folders are left out
-(SKIP_KEYS), and so is the secret phone-alert topic. The saved times are local time: save again if the PC's time zone changes."""
-import argparse, json, os, sys
+(SKIP_KEYS), and so is the secret phone-alert topic. The saved times are local time (the program works in local time,
+like on the Pi): the synthetic files were saved in Danish time, so on Linux/macOS the run uses TZ=Europe/Copenhagen;
+on Windows the PC's own zone is used: save again if it is not Danish time."""
+import argparse, json, os, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "scada"))
@@ -62,6 +64,9 @@ def main(argv=None):
     ap.add_argument("--at", default="08:00", help="the moment the answers are taken")
     ap.add_argument("--port", type=int, default=8817)
     a = ap.parse_args(argv)
+    if not a.data and hasattr(time, "tzset"):      # synthetic data: the saved files are Danish time (the replay
+        os.environ["TZ"] = "Europe/Copenhagen"     # child process inherits it); Windows has no tzset
+        time.tzset()
     now = fetch(a)
     if a.save:
         os.makedirs(a.dir, exist_ok=True)

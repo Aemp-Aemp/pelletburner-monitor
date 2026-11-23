@@ -1997,9 +1997,11 @@ async function poll(){
     liveTV=j.tv||"";
     if(Array.isArray(j.history)&&j.history.length) liveSince=Math.max(liveSince,j.history[j.history.length-1].epoch||0);
     setTxt("footVer", j.version?"Version "+j.version:"");   // same word in English and Danish
+    const firstSrv=!(SERVER&&SERVER.labels);
     SERVER={transitions:j.transitions, prev_state:j.prev_state, prealarm:j.prealarm,
             cfg_sync:j.cfg_sync, remote:j.remote, auto_reset:j.auto_reset, events:j.events,
             state_since:j.state_since, labels:j.labels, warm:j.warm};
+    if(firstSrv && j.labels && lastIgR) renderIgnitions(lastIgR);   // opened straight on Analysis (classic#opt): fill 'Started by'
     lastCfgRaw = (j.cfg && j.cfg.raw) || lastCfgRaw;
     lastCfgAt = (j.cfg && j.cfg.epoch) || lastCfgAt;
     ASH = j.ash_plate || ASH;
@@ -2813,7 +2815,9 @@ function scatter(canvas, pts, xLabel, yLabel, xTick){
     else { c.beginPath(); c.arc(px,py,4.5,0,Math.PI*2); c.fill(); }
   });
 }
+let lastIgR=null;   // kept so the table can be drawn again once the 'Started by' names arrive with the first status poll
 function renderIgnitions(r){
+  lastIgR=r;
   const recs=(r.records||[]), batches=r.batches||[];
   document.getElementById("igBatchNow").textContent=t("ig_batch_now",{b:r.current_batch||"—"});
   const leg=document.getElementById("igLegend");

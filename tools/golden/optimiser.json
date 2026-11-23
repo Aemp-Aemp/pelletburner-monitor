@@ -143,7 +143,12 @@
 "checks":[
 {
 "k":"light",
-"st":"learn"
+"p":{
+"a":5.0,
+"usual":5.0
+},
+"st":"ok",
+"why":"ok"
 },
 {
 "k":"flame",
@@ -167,9 +172,11 @@
 "items":[
 {
 "key":"to_flame",
+"last":5.0,
 "n":5,
-"need":6,
-"state":"learning",
+"normal":5.0,
+"now":5.0,
+"state":"ok",
 "unit":"min"
 },
 {

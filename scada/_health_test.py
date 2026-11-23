@@ -22,8 +22,8 @@ try:
     now = time.time()
     def rec(i, mins, peak, res="ok"):
         return {"epoch": now - (20 - i) * 3600, "result": res, "flame_s": mins * 60 if res == "ok" else None, "peak_lux": peak}
-    # 1) too few starts -> learning, never a false alarm
-    o = F.Optimiser(st, None, Mod([rec(i, 4.5, 150) for i in range(3)]), log)
+    # 1) too few starts (2; 3 that lit are enough for time to flame) -> learning, never a false alarm
+    o = F.Optimiser(st, None, Mod([rec(i, 4.5, 150) for i in range(2)]), log)
     h = o.health(days=[])
     check("few starts -> learning", h["status"] == "learning")
     # 2) steady burner -> ok

@@ -70,6 +70,9 @@ Everything in 0.9.0, plus:
 - Pellet batches whose names differ only in capitals or spaces count as one batch.
 - Opening the page under a host name that is not allowed shows a plain message on what to do.
 - On Windows, a web port already in use now gives a clear message instead of two programs sharing it.
+- Burner health "Time to flame": no longer says "Still learning" when the usual time is already known, and it
+  judges the last 3 starts that lit, not only the newest (one slow start showed a green tick).
+- /classic Analysis: "Started by" is filled in when the page is opened straight on the Analysis tab.
 
 ## 0.9.0 (never released; the state before 1.0.0)
 

@@ -7,7 +7,7 @@
 
 The web pages carry their tables as a block written by tools/sync_pages.py from this file (never typed by hand);
 scada/_sync_test.py fails when a page is not up to date."""
-import datetime, glob, json, math, os, shutil, threading, time
+import datetime, glob, json, math, os, re, shutil, threading, time
 
 # ---------------------------------------------------------------------------- states
 # The boiler's own names (screen words, used in logs and *_label fields)
@@ -117,9 +117,27 @@ def finite_num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+JSON_MAX_DEPTH = 100                     # our own JSON is a few levels deep; more is refused before parsing
+_JSON_STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
+_JSON_BRACKET = re.compile(r"[\[\]{}]")
+
+
+def json_too_deep(text, limit=JSON_MAX_DEPTH):
+    """True if the brackets outside strings nest deeper than limit. Checked before json.loads, because how deep
+    json.loads itself can go (and whether it raises RecursionError) depends on the Python version and the OS."""
+    if text.count("[") + text.count("{") <= limit:          # quick answer for most texts (a long certificate too)
+        return False
+    depth = 0
+    for m in _JSON_BRACKET.finditer(_JSON_STRING.sub("", text)):
+        depth += 1 if m.group() in "[{" else -1
+        if depth > limit:
+            return True
+    return False
+
+
 def strict_json_loads(raw):
     """json.loads for data from outside: Infinity, NaN and numbers too big (1e999) raise ValueError, and JSON nested
-    too deep raises ValueError instead of RecursionError, so the caller can answer "bad JSON"."""
+    too deep raises ValueError (not RecursionError, not parsed at all), so the caller can answer "bad JSON"."""
     def bad_const(s):
         raise ValueError(f"{s} is not a JSON number")
 
@@ -128,6 +146,10 @@ def strict_json_loads(raw):
         if not math.isfinite(f):
             raise ValueError("number too big")
         return f
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode(json.detect_encoding(raw), "surrogatepass")     # as json.loads does; bad bytes: ValueError
+    if json_too_deep(raw):
+        raise ValueError("JSON nested too deep")
     try:
         return json.loads(raw, parse_constant=bad_const, parse_float=flt)
     except RecursionError:

@@ -651,8 +651,7 @@ def main(argv=None):
     print(f"# replay: state in {state_path} and GET /api/replay; Ctrl+C stops", flush=True)
     try:
         while True:
-            _real_sleep(1.0)
-            try:
+            try:                                 # written first, then every second: the file is there from the start
                 st = rp.status()
                 tmp = state_path + ".tmp"
                 with open(tmp, "w", encoding="utf-8") as fh:
@@ -663,6 +662,7 @@ def main(argv=None):
             if a.exit_at_end and feeder.ended:
                 print("# replay: end reached", flush=True)
                 break
+            _real_sleep(1.0)
     except KeyboardInterrupt:
         pass
     os._exit(0)

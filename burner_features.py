@@ -1889,11 +1889,12 @@ class Optimiser:
                           "now": round(now, 1), "normal": round(base, 1), "unit": unit, "n": len(vals)})
 
         # time to flame: "usual" is THE typical time to flame (usual_flame, same as /api/ignitions and the
-        # Lighting time card); "now" = the latest 3 starts that lit since the cleaning
+        # Lighting time card); "now" = the latest 3 starts that lit since the cleaning. Ready as soon as the
+        # card is (a usual value) and 3 starts lit, so health and the card never disagree
         vals = [flame_min(r) for r in ok]
         typ = usual_flame(list(ig.records) if ig else [], self.settings)[0]
-        if typ is None or len(vals) < 6:
-            items.append({"key": "to_flame", "state": "learning", "n": len(vals), "need": 6, "unit": "min"})
+        if typ is None or len(vals) < 3:
+            items.append({"key": "to_flame", "state": "learning", "n": len(vals), "need": 3, "unit": "min"})
         else:
             now = statistics.median(vals[-3:])
             items.append({"key": "to_flame", "state": "worse" if now - typ > max(1.0, 0.3 * typ) else "ok",
@@ -1947,8 +1948,8 @@ class Optimiser:
             out.append({"k": "light", "st": "bad", "why": "fail", "p": {"a": fl["now"], "n": fl["n"]}})
         elif worse(tf):
             out.append({"k": "light", "st": "bad", "why": "slow", "p": {"a": tf["now"], "usual": tf["normal"]}})
-        elif known(tf):                            # the newest start that lit, against the usual
-            out.append({"k": "light", "st": "ok", "why": "ok", "p": {"a": tf.get("last", tf["now"]), "usual": tf["normal"]}})
+        elif known(tf):                            # the latest starts (median of 3), against the usual
+            out.append({"k": "light", "st": "ok", "why": "ok", "p": {"a": tf["now"], "usual": tf["normal"]}})   # the last 3 starts (median), the same value the check judges
         else:
             out.append({"k": "light", "st": "learn"})
         a, b = it.get("start_flame"), it.get("run_flame")

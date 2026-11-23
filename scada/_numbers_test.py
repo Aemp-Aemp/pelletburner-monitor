@@ -134,6 +134,17 @@ mod.ignitions.records = mix[:5]
 tf = next(i for i in F.Optimiser(Settings({}), None, mod, log).health(days=[])["items"] if i["key"] == "to_flame")
 check("health: no typical (only starts older than 4 weeks) -> learning", tf["state"] == "learning"
       and api_typical(mix[:5], Settings({})) is None)
+
+# health is ready when the Lighting time card is: a usual value and 3 starts that lit (not 6)
+mod.ignitions.records = [{"epoch": tn + i * 3600, "result": "ok", "flame_s": s, "peak_lux": 150}
+                         for i, s in enumerate((200, 260, 230))]
+tf = next(i for i in F.Optimiser(Settings({}), None, mod, log).health(days=[])["items"] if i["key"] == "to_flame")
+check("health: 3 lit starts and a usual value -> not learning, now = median of the 3, last = newest",
+      tf["state"] == "ok" and tf["normal"] == F.usual_flame(mod.ignitions.records, Settings({}))[0] == 3.83
+      and tf["now"] == 3.8 and tf["last"] == 3.8 and tf["n"] == 3)
+mod.ignitions.records = mod.ignitions.records[:2]
+tf = next(i for i in F.Optimiser(Settings({}), None, mod, log).health(days=[])["items"] if i["key"] == "to_flame")
+check("health: 2 lit starts -> still learning, needs 3", tf["state"] == "learning" and tf["n"] == 2 and tf["need"] == 3)
 mod.ignitions.records = [{"epoch": tn + i * 3600, "result": "ok", "flame_s": 270 + (30 if i == 9 else 0), "peak_lux": 150}
                          for i in range(10)]
 
@@ -141,10 +152,11 @@ mod.ignitions.records = [{"epoch": tn + i * 3600, "result": "ok", "flame_s": 270
 days7 = [{"day": f"2000-01-0{i}", "runs": [90.0, 20.0], "running_s": 7200} for i in range(1, 4)]
 mod.fan = types.SimpleNamespace(analyse=lambda: {"levels": [{"change_pct": -2.0, "n": 20}, {"change_pct": 1.0, "n": 15}, {"change_pct": None, "n": 4}]})
 mod.ash = types.SimpleNamespace(feed=lambda: {"turn_hist": [[i, 6.0] for i in range(12)], "problem": None})
-ch = F.Optimiser(Settings({}), None, mod, log).health(days=days7)["checks"]
+hh = F.Optimiser(Settings({}), None, mod, log).health(days=days7)
+ch, tf7 = hh["checks"], next(i for i in hh["items"] if i["key"] == "to_flame")
 check("checklist: the five checks, in order", [c["k"] for c in ch] == ["light", "flame", "fan", "ash", "short"])
-check("checklist: time to flame shows the newest start against the usual",
-      ch[0] == {"k": "light", "st": "ok", "why": "ok", "p": {"a": 5.0, "usual": 4.5}})
+check("checklist: time to flame shows the judged value (last 3 starts), not only the newest",
+      ch[0] == {"k": "light", "st": "ok", "why": "ok", "p": {"a": tf7["now"], "usual": 4.5}})
 check("checklist: flame, fan and ash plate as usual", [c["st"] for c in ch[1:4]] == ["ok", "ok", "ok"]
       and ch[3]["p"] == {"a": 6.0, "usual": 6.0})
 check("checklist: the fan with its biggest drop and how many measurements", ch[2] == {"k": "fan", "st": "ok", "why": "ok", "p": {"a": 2.0, "n": 35}})
