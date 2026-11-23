@@ -1,0 +1,16 @@
+[Unit]
+Description=Pellet burner monitor: first-start install (keeps trying until done)
+Wants=network-online.target
+After=network-online.target cloud-final.service
+ConditionPathExists=!/var/lib/pelletpi/installed
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /boot/firmware/pelletpi/firstboot.sh
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

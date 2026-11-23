@@ -1,0 +1,28 @@
+# runtime data and logs - never in the repo
+data/
+*.log
+*.log.*
+scada/insights.json
+remote_cmd.txt
+.env
+
+# built card folders and images (scripts/make_card.py, scripts/make-image.sh)
+dist/
+*.img
+*.img.xz
+
+# local leftovers
+*.bak
+*.tmp
+__pycache__/
+*.pyc
+
+# private keys / Wi-Fi settings for the Pi card
+*.pem
+*_ed25519*
+*.key
+pi/user-data
+pi/network-config
+
+# made-up data for the demo (README: Try it without a boiler)
+demo-data/

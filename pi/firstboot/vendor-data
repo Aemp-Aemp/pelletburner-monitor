@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pellet burner monitor - easy install hook. cloud-init runs this once on the very first start
+# (it reads "vendor-data" next to the "user-data" that Raspberry Pi Imager writes).
+# No settings here and no passwords: Imager keeps the user, Wi-Fi and host name in its own files.
+set -e
+[ -f /boot/firmware/pelletpi/install.sh ] || exit 0
+sh /boot/firmware/pelletpi/install.sh --start

@@ -1,0 +1,581 @@
+{
+"cards":[
+{
+"chart":{
+"rows":[
+{
+"da":"Venter",
+"en":"Waiting"
+},
+{
+"da":"Askeplade drejer",
+"en":"Ash plate turn"
+},
+{
+"da":"Udluftning",
+"en":"Air purge"
+},
+{
+"da":"Gør klar",
+"en":"Getting ready"
+},
+{
+"da":"Tændbrændsel (fødning)",
+"en":"Start fuel (feeding)"
+},
+{
+"da":"Varmer piller, ingen flamme endnu",
+"en":"Heating pellets, no flame yet"
+},
+{
+"da":"Flamme set, tænding til",
+"en":"Flame seen, igniter on"
+},
+{
+"da":"Flammen stabiliseres (røgsuger 50 %)",
+"en":"Flame settling (fan 50 %)"
+},
+{
+"da":"Effekt øges trinvis",
+"en":"Stepping up power"
+},
+{
+"da":"Drift",
+"en":"Running"
+}
+],
+"segments":[
+[
+946825170.2,
+946825200.2,
+0
+],
+[
+946825200.2,
+946825210.2,
+1
+],
+[
+946825210.2,
+946825230.2,
+2
+],
+[
+946825230.2,
+946825260.2,
+3
+],
+[
+946825260.2,
+946825350.2,
+4
+],
+[
+946825350.2,
+946825560.2,
+5
+],
+[
+946825560.2,
+946825620.2,
+6
+],
+[
+946825620.2,
+946825980.2,
+7
+],
+[
+946825980.2,
+946826400.2,
+8
+],
+[
+946826400.2,
+946828780.2,
+9
+]
+],
+"t0":946825170.2,
+"t1":946828780.2,
+"type":"timeline"
+},
+"id":"substeps",
+"text":{
+"da":"Venter 0,5 min, Askeplade drejer 0,2 min, Udluftning 0,3 min, Gør klar 0,5 min, Tændbrændsel (fødning) 1,5 min, Varmer piller, ingen flamme endnu 3,5 min, Flamme set, tænding til 1,0 min, Flammen stabiliseres (røgsuger 50 %) 6,0 min, Effekt øges trinvis 7,0 min, Drift 39,7 min (grafen viser kun den første time; brænderen fortsatte). Tid til flamme 5,0 min, regnet fra tændingen begynder (som på Historik-siden). Disse delskridt er regnet ud fra målingerne (fødning, tænding, røgsuger, flamme, effekt, askepladekontakt). Kedlen sender dem IKKE: den sender kun sin hovedtilstand, så teksterne på dens egen skærm kan være anderledes.",
+"en":"Waiting 0.5 min, Ash plate turn 0.2 min, Air purge 0.3 min, Getting ready 0.5 min, Start fuel (feeding) 1.5 min, Heating pellets, no flame yet 3.5 min, Flame seen, igniter on 1.0 min, Flame settling (fan 50 %) 6.0 min, Stepping up power 7.0 min, Running 39.7 min (the chart shows the first hour only; the burner kept going). Time to flame 5.0 min, counted from the start of lighting (as on the History page). These sub-steps are worked out from the readings (feed, igniter, fan, flame, power, ash-plate switch). The boiler does NOT send them: it only sends its main state, so its own screen texts can differ."
+},
+"title":{
+"da":"Sidste start, trin for trin (02/01 16:00)",
+"en":"The last start, step by step (02/01 16:00)"
+}
+},
+{
+"chart":{
+"labels":[
+"01/01",
+"02/01"
+],
+"series":[
+{
+"data":[
+0,
+0
+],
+"name":{
+"da":"minutter før tid",
+"en":"minutes early"
+},
+"unit":"min"
+}
+],
+"type":"bar"
+},
+"data":{
+"made":0,
+"starts":[
+{
+"early":null,
+"goal":946706400,
+"ok":false,
+"took":null
+},
+{
+"early":null,
+"goal":946792800,
+"ok":false,
+"took":null
+}
+],
+"warm_c":60.0
+},
+"id":"warm_by",
+"text":{
+"da":"0 af 2 'varm kl.'-starter havde kedlen på 60 °C i tide; den sidste nåede det aldrig. Over 0 = varm før tid, under 0 = for sent. Starttiden regnes ud fra hvor hurtigt kedlen kølede om natten, så den bliver bedre efterhånden som den lærer.",
+"en":"0 of 2 'warm by' starts had the boiler at 60 °C in time; the last one never got there. Above 0 = warm early, below 0 = late. The start time is worked out from how fast the boiler cooled overnight, so it gets better as it learns."
+},
+"title":{
+"da":"Var den varm i tide?",
+"en":"Was it warm in time?"
+}
+},
+{
+"chart":{
+"labels":[
+"01/01",
+"02/01"
+],
+"series":[
+{
+"data":[
+4.1,
+4.5
+],
+"name":{
+"da":"Morning",
+"en":"Morning"
+},
+"unit":"kg"
+},
+{
+"data":[
+5.9,
+6.5
+],
+"name":{
+"da":"Evening",
+"en":"Evening"
+},
+"unit":"kg"
+}
+],
+"type":"stack"
+},
+"data":{
+"days":2,
+"periods":[
+{
+"kg":4.3,
+"name":"Morning",
+"share":41
+},
+{
+"kg":6.2,
+"name":"Evening",
+"share":59
+}
+]
+},
+"id":"pellets_period",
+"text":{
+"da":"Gennemsnit pr. dag de sidste 2 dage der er optaget hele døgnet: Morning 4,3 kg, Evening 6,2 kg. Evening bruger mest (59 %). Hver fyring tæller for den periode i varmeplanen der startede den. Sorteret efter varmeplanen som den er i dag.",
+"en":"Average per day over the last 2 days recorded in full: Morning 4.3 kg, Evening 6.2 kg. Evening uses the most (59 %). Each burn counts for the plan period that started it. Sorted with today's heating plan."
+},
+"title":{
+"da":"Piller pr. periode i varmeplanen",
+"en":"Pellets per heating-plan period"
+}
+},
+{
+"chart":{
+"labels":[
+"under 40 %",
+"40-59 %",
+"60-79 %",
+"80-99 %",
+"100 %"
+],
+"series":[
+{
+"data":[
+0.0,
+4.0,
+0.0,
+0.0,
+8.7
+],
+"name":{
+"da":"timer",
+"en":"hours"
+},
+"unit":"h"
+}
+],
+"type":"bar"
+},
+"id":"power_levels",
+"text":{
+"da":"Af 12,7 timers rolig fyring: 68 % ved fuld effekt og 32 % under 60 %. Brænderen skruer selv ned når kedlen nærmer sig målet. Meget lav effekt betyder at huset skal bruge mindre end brænderen kan give: en lavere 'stop ved' i varmeplanen afslutter de stille haler før.",
+"en":"Of 12.7 hours of steady burning: 68 % at full power and 32 % below 60 %. The burner turns itself down as the boiler nears its target. Lots of low power means the house needs less than the burner can give: a lower 'stop at' in the heating plan ends those quiet tails sooner."
+},
+"title":{
+"da":"Tid ved hver effekt",
+"en":"Time at each power level"
+}
+},
+{
+"chart":{
+"labels":[
+"01/01 06:00",
+"01/01 16:00",
+"02/01 06:00",
+"02/01 16:00"
+],
+"series":[
+{
+"data":[
+5.0,
+6.0,
+5.5,
+6.0
+],
+"name":{
+"da":"til flamme",
+"en":"getting a flame"
+},
+"state":3,
+"unit":"min"
+},
+{
+"data":[
+175.0,
+234.0,
+174.5,
+234.0
+],
+"name":{
+"da":"fyring",
+"en":"burning"
+},
+"state":4,
+"unit":"min"
+}
+],
+"type":"stack"
+},
+"id":"burn_vs_start",
+"text":{
+"da":"0 af de sidste 4 fyringer var kortere end 30 min efter flammen (typisk 204 min). Hver start koster en tænding og ca. 6 minutters stabilisering, så korte fyringer betyder mange starter for lidt varme. I mildt vejr giver en lavere stop-% i varmeplanen (Indstillinger på den nye side, eller en lavere kedeltemperatur) som regel længere, roligere fyringer.",
+"en":"0 of the last 4 burns were shorter than 30 min after the flame (typical 204 min). Every start costs an ignition and about 6 minutes of flame settling, so short burns mean many starts for little heat. In mild weather a lower stop % in the heating plan (Settings on the new page, or a lower target temperature) usually gives longer, calmer burns."
+},
+"title":{
+"da":"Hver start: at få flamme mod rigtig fyring",
+"en":"Each start: getting a flame vs real burning"
+}
+},
+{
+"chart":{
+"points":[
+[
+0,
+55.6
+],
+[
+15,
+54.1
+],
+[
+30,
+52.6
+],
+[
+45,
+51.2
+],
+[
+60,
+49.9
+],
+[
+90,
+47.3
+],
+[
+120,
+45.0
+],
+[
+180,
+40.9
+],
+[
+240,
+37.4
+],
+[
+300,
+34.4
+],
+[
+360,
+31.9
+]
+],
+"type":"xy",
+"xlabel":{
+"da":"minutter efter stop",
+"en":"minutes after the stop"
+},
+"ylabel":{
+"da":"kedel °C",
+"en":"boiler °C"
+}
+},
+"id":"cooling",
+"text":{
+"da":"Efter stoppet 02/01 20:00 gik kedlen fra 56 °C til 32 °C på 360 min (6 °C den første time). Den køler hurtigst lige efter stoppet og langsommere når den nærmer sig rumtemperatur. Det er det en 'varm kl.'-start skal bruge: jo koldere kedlen er, jo tidligere skal den starte.",
+"en":"After the stop at 02/01 20:00 the boiler went from 56 °C to 32 °C in 360 min (6 °C in the first hour). It cools fastest just after the stop and slower as it gets near room temperature. This is what a 'warm by' start needs: the colder the boiler, the earlier it has to start."
+},
+"title":{
+"da":"Hvor hurtigt kedlen køler efter et stop",
+"en":"How fast the boiler cools after a stop"
+}
+},
+{
+"chart":{
+"labels":[
+"01/01",
+"02/01",
+"03/01"
+],
+"series":[
+{
+"data":[
+6.33,
+6.33,
+0
+],
+"name":{
+"da":"Drift",
+"en":"Running"
+},
+"state":4,
+"unit":"h"
+},
+{
+"data":[
+0.63,
+0.63,
+0
+],
+"name":{
+"da":"Tænding",
+"en":"Ignition"
+},
+"state":3,
+"unit":"h"
+},
+{
+"data":[
+0.03,
+0.03,
+0
+],
+"name":{
+"da":"Opstart",
+"en":"Starting"
+},
+"state":2,
+"unit":"h"
+},
+{
+"data":[
+7.5,
+7.5,
+0
+],
+"name":{
+"da":"Venter",
+"en":"Waiting"
+},
+"state":1,
+"unit":"h"
+},
+{
+"data":[
+9.5,
+9.5,
+5.5
+],
+"name":{
+"da":"Stoppet",
+"en":"Stopped"
+},
+"state":0,
+"unit":"h"
+},
+{
+"data":[
+0,
+0,
+0
+],
+"name":{
+"da":"Alarm",
+"en":"Alarm"
+},
+"state":6,
+"unit":"h"
+}
+],
+"type":"stack"
+},
+"id":"time_per_state",
+"text":{
+"da":"Timer i hver tilstand pr. dag mens monitoren optog. I snit drift 4,2 t og tænding 0,4 t om dagen (3 dage). Tænding dækker også opvarmningen efter flammen, hvor kedlen øger effekten trinvis (ca. 30 min fra kold kedel), så noget tændtid er normalt.",
+"en":"Hours in each state per day while the monitor was recording. On average running 4.2 h and ignition 0.4 h a day (3 days). Ignition also covers the warm-up after the flame, where the boiler raises the power step by step (about 30 min from a cold boiler), so some ignition time is normal."
+},
+"title":{
+"da":"Hvor timerne går hen (pr. dag)",
+"en":"Where the hours go (per day)"
+}
+},
+{
+"chart":{
+"labels":[
+"01/01 06:00",
+"01/01 16:00",
+"02/01 06:00",
+"02/01 16:00"
+],
+"series":[
+{
+"data":[
+4.0,
+5.0,
+4.5,
+5.0
+],
+"name":{
+"da":"minutter til flamme",
+"en":"minutes to flame"
+},
+"unit":"min"
+}
+],
+"type":"bar"
+},
+"id":"ign_minutes",
+"text":{
+"da":"4 af 4 tændinger fik flamme; typisk 4,8 min. Regnet fra tændingen begynder til flammen er stærk nok. Starter uden flamme (stoppet eller mislykket) er udeladt af grafen; starter hvor flammen allerede var der tælles ikke med. Målt ud fra målingerne, ikke kedlens egen log.",
+"en":"4 of 4 ignitions found a flame; typical 4.8 min. Counted from when lighting begins until the flame is strong enough. Starts without a flame (stopped or failed) are left out of the chart; starts where the flame was already on are not counted. Measured from the readings, not from the boiler's own log."
+},
+"title":{
+"da":"Minutter til flamme, hver start",
+"en":"Minutes to flame, each start"
+}
+},
+{
+"chart":{
+"labels":[
+"50–60 %",
+"100–110 %"
+],
+"series":[
+{
+"data":[
+0.5,
+2.0
+],
+"name":{
+"da":"°C pr. 10 min",
+"en":"°C per 10 min"
+},
+"unit":"°C"
+}
+],
+"type":"bar"
+},
+"id":"warm_rate",
+"text":{
+"da":"Ændring i kedeltemperatur pr. 10 minutter under drift, efter effekt. Over 0 = kedlen bliver varmere (huset tager mindre end brænderen giver); omkring 0 = balance. Det afhænger af hvor meget varme huset tager lige da, så sammenlign dage med ens vejr.",
+"en":"Change in boiler temperature per 10 minutes while running, by power. Above 0 = the boiler gains heat (the house takes less than the burner gives); around 0 = balance. It depends on how much heat the house takes at that moment, so compare days with similar weather."
+},
+"title":{
+"da":"Hvor hurtigt kedlen varmer ved hver effekt",
+"en":"How fast the boiler warms at each power"
+}
+},
+{
+"chart":{
+"points":[
+[
+419.8,
+45.1
+],
+[
+29.8,
+55.3
+],
+[
+419.8,
+46.7
+],
+[
+29.8,
+55.6
+]
+],
+"type":"xy",
+"xlabel":{
+"da":"minutter ventet",
+"en":"minutes waited"
+},
+"ylabel":{
+"da":"kedel °C",
+"en":"boiler °C"
+}
+},
+"id":"min_mode",
+"text":{
+"da":"4 pauser registreret. Hver prik: hvor længe brænderen ventede (minutter) og kedeltemperaturen da den holdt pause. Mange korte pauser ved høj temperatur betyder at brænderen giver mere varme end huset bruger: en lavere 'Stop ved' eller 'Max ydelse' i kedlens menu kan give længere, roligere perioder.",
+"en":"4 pauses recorded. Each dot: how long the burner waited (minutes) and the boiler temperature when it paused. Many short pauses at a high temperature mean the burner gives more heat than the house needs: a lower 'Stop at' or 'Max power' in the boiler menu can give longer, calmer runs."
+},
+"title":{
+"da":"Pauser i minimumdrift",
+"en":"Minimum-mode pauses"
+}
+}
+],
+"rows":20880
+}

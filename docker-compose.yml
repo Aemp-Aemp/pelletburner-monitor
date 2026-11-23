@@ -1,0 +1,48 @@
+# Start:   docker compose up -d --build
+# Logs:    docker compose logs -f
+# Stop:    docker compose down
+# Page:    http://<pi-address>:8787/home   (classic page: /classic)
+services:
+  burner:
+    build: .
+    container_name: pelletburner
+    restart: unless-stopped
+    network_mode: host                    # the page is reachable on the Pi's own addresses (USB-C, Wi-Fi, cable)
+    # Change settings in a .env file next to this file (copy .env.example), not here.
+    environment:
+      # The USB-serial adapter on the boiler's module port. "auto" = the one adapter that is plugged in.
+      # With more than one USB-serial adapter, put its stable name in a .env file:
+      #   BURNER_SERIAL=/dev/serial/by-id/usb-FTDI_...
+      - BURNER_PORT=${BURNER_SERIAL:-auto}
+      # Web page port, and whether the page (and Home Assistant) may start and stop the burner (0 = view only).
+      - BURNER_HTTP_PORT=${BURNER_HTTP_PORT:-8787}
+      - BURNER_REMOTE_START=${BURNER_REMOTE_START:-1}
+      # Days of history kept in ./data, and the size (MB) at which the log file is rotated.
+      - BURNER_KEEP_DAYS=${BURNER_KEEP_DAYS:-30}
+      - BURNER_LOG_MAX_MB=${BURNER_LOG_MAX_MB:-50}
+      # Names the page may be opened under. "lan" = any private IPv4 address (home network, USB-C link).
+      # Everyone who can reach the Pi on these addresses can use the buttons and settings.
+      - BURNER_ALLOWED_HOSTS=${BURNER_ALLOWED_HOSTS:-lan,pelletpi.local}
+      # Home Assistant (optional): the Mosquitto add-on's address and an HA user for it, in the .env file:
+      #   BURNER_MQTT=homeassistant.local      BURNER_MQTT_USER=burner      BURNER_MQTT_PASS=...
+      # Empty = no MQTT. BURNER_MQTT_READ_ONLY=1 = values only, no buttons / switches in Home Assistant.
+      - BURNER_MQTT=${BURNER_MQTT:-}
+      - BURNER_MQTT_USER=${BURNER_MQTT_USER:-}
+      - BURNER_MQTT_PASS=${BURNER_MQTT_PASS:-}
+      - BURNER_MQTT_READ_ONLY=${BURNER_MQTT_READ_ONLY:-}
+      - BURNER_MQTT_PREFIX=${BURNER_MQTT_PREFIX:-burner}
+    # The host's /dev is shown read-only, and only USB-serial devices may be opened (188 = ttyUSB, 166 = ttyACM).
+    # This way the adapter is found again after it is unplugged, plugged into another socket, or the boiler
+    # power-cycles it - without restarting the container.
+    device_cgroup_rules:
+      - "c 188:* rmw"
+      - "c 166:* rmw"
+    volumes:
+      - /dev:/dev:ro
+      - ./data:/app/data                  # history, settings, pellets, ash - survives updates
+      - /etc/localtime:/etc/localtime:ro  # the heating plan uses the local time of the Pi
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

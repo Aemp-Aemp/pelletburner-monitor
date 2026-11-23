@@ -1,0 +1,9 @@
+# Pellet burner monitor - easy install settings.
+# Never put Wi-Fi passwords or keys here: Raspberry Pi Imager keeps those.
+#
+# Where to get the program when this folder has no app.tar.gz (the release folder has one):
+REPO_URL=https://github.com/CHANGE-ME/pelletburner-monitor.git
+# Branch or tag to use. Empty = the repository's default branch.
+REPO_BRANCH=
+# Safe auto-update every night: only release tags, only while the burner is off or waiting. yes or no.
+AUTO_UPDATE=yes
