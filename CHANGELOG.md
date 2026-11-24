@@ -4,6 +4,16 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.8
+
+### New
+- "Did the change help?" (History): every cold start as a dot, a line where a setting, the pellet batch or a cleaning changed, and a plain verdict for time to flame, full heat, failed starts, flame strength and short burns: better / worse / the same / too few to say.
+- "Pellets and the weather" (Pellets & ash): learns your house's line (kg a day against the outside temperature). Until it has 14 good days it says "Learning". Then: "At 0 °C about X kg a day" and the coming week in kg from the weather forecast. kg only.
+- Phone alerts: after an update the message says "Monitor updated: now on v1.0.8 (was v1.0.7)", or that the update did not work and it went back.
+
+### Better
+- Discoveries: the misleading "How fast the boiler warms at each power" chart is gone.
+
 ## 1.0.7
 
 ### Better

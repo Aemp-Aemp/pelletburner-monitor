@@ -447,5 +447,37 @@ try:
 finally:
     N._urlopen = no_net
     shutil.rmtree(d, ignore_errors=True)
+# ---- why the monitor (re)started: an update says so
+td = tempfile.mkdtemp()
+try:
+    sm = N.Ntfy.start_message if hasattr(N, "Ntfy") else None
+    cls = next(c for c in vars(N).values() if isinstance(c, type) and hasattr(c, "start_message"))
+    sm = cls.start_message
+    T0 = 1000000.0
+    def upd(**d):
+        with open(os.path.join(td, "update.json"), "w", encoding="utf-8") as fh:
+            json.dump(dict({"checked": T0}, **d), fh)
+    check("no update.json: plain 'monitor started'", sm(td, T0) == ("monitor_start", {}))
+    upd(code="updated", current="v1.0.5", **{"from": "v1.0.2", "to": "v1.0.5"})
+    k, pp = sm(td, T0 + 60)
+    check("just updated: says from and to", k == "monitor_updated" and pp == {"frm": "v1.0.2", "to": "v1.0.5"})
+    t, b, _, _ = N.message(k, "en", **pp)
+    check("updated text", "now on v1.0.5 (was v1.0.2)" in b)
+    check("an old update is not news", sm(td, T0 + 3600) == ("monitor_start", {}))
+    upd(code="rolled_back", current="v1.0.5", **{"from": "v1.0.5", "to": "v1.0.6"})
+    k, pp = sm(td, T0 + 60)
+    check("rolled back: names the version that failed", k == "monitor_rolled_back" and pp == {"tried": "v1.0.6", "cur": "v1.0.5"})
+    upd(code="went_back", current="v1.0.0", **{"from": "v1.0.1", "to": "v1.0.0"})
+    check("went back on request", sm(td, T0 + 60) == ("monitor_went_back", {"cur": "v1.0.0"}))
+    check("DA texts exist", all(N.message(k2, "da", frm="a", to="b", tried="c", cur="d")[0] for k2 in
+                                ("monitor_updated", "monitor_rolled_back", "monitor_went_back")))
+    check("no data folder: plain start", sm(None, T0) == ("monitor_start", {}))
+    upd(code=None, phase="install", current="v1.0.2")
+    check("while the updater tests the swap: busy", cls.update_busy(td) is True)
+    upd(code="updated", phase="idle", current="v1.0.5", **{"from": "v1.0.2", "to": "v1.0.5"})
+    check("after the test: not busy", cls.update_busy(td) is False)
+    check("no data folder: not busy", cls.update_busy(None) is False)
+finally:
+    shutil.rmtree(td, ignore_errors=True)
 print("ALL OK" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)

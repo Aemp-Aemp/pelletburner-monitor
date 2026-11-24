@@ -2,6 +2,7 @@
 "ash":{
 "emptied_at":null
 },
+"change":null,
 "days":[
 {
 "alarms":{},
@@ -9,6 +10,11 @@
 "day":"2000-01-01",
 "drift_power_avg":84.2,
 "drift_power_max_share":0.68,
+"early":{
+"kg":0.0,
+"run_s":0,
+"s":21600
+},
 "flame_power":{
 "50":[
 7200.0,
@@ -46,7 +52,7 @@
 "3":2280.0,
 "4":22800.0
 },
-"v":5
+"v":6
 },
 {
 "alarms":{},
@@ -54,6 +60,11 @@
 "day":"2000-01-02",
 "drift_power_avg":84.2,
 "drift_power_max_share":0.68,
+"early":{
+"kg":0.0,
+"run_s":0,
+"s":21600
+},
 "flame_power":{
 "50":[
 7200.0,
@@ -91,7 +102,7 @@
 "3":2280.0,
 "4":22800.0
 },
-"v":5
+"v":6
 },
 {
 "alarms":{},
@@ -99,6 +110,11 @@
 "day":"2000-01-03",
 "drift_power_avg":100.0,
 "drift_power_max_share":1.0,
+"early":{
+"kg":0.0,
+"run_s":0,
+"s":21600
+},
 "flame_power":{
 "90":[
 5990.0,
@@ -125,7 +141,7 @@
 "3":1140.0,
 "4":5990.0
 },
-"v":5
+"v":6
 }
 ],
 "flame_power":[
@@ -276,5 +292,18 @@
 "title":"Often at full power"
 }
 ],
-"window":"last 28 days with burning (idle days are skipped)"
+"window":"last 28 days with burning (idle days are skipped)",
+"wx":{
+"base_c":16.0,
+"flat":10.5,
+"learned":false,
+"n":0,
+"need":14,
+"need_r2":0.5,
+"need_spread":6.0,
+"pts":[],
+"since":null,
+"spread":0.0,
+"why":"days"
+}
 }

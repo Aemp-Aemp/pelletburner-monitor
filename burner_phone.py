@@ -354,6 +354,9 @@ class PhoneCommands:
             src = C.SOURCES.get(recs[-1].get("source") or "")
             by = w["by"].format(w=src.get(lang) or src["en"]) if src else ""
             lines.append(w["last"].format(t=t, by=by))
+        opt = getattr(self.mod, "optimiser", None)      # a change of the last 14 days, the pellets forecast
+        if opt is not None and hasattr(opt, "phone_lines"):
+            lines += opt.phone_lines(lang, now)
         return "\n".join(lines)
 
     def _in_alarm(self):

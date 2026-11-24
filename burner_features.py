@@ -1795,7 +1795,7 @@ class FanMonitor:
 
 
 # ============================================================================ optimiser
-SUMMARY_VERSION = 5
+SUMMARY_VERSION = 6                # 6: "early" = the part of the day before 06:00 (the pellets and weather days)
 ALARM_HINTS = {2: "thermo switch: check burner plug/cable and for burn-back",
                4: "ignition failed: check igniter, start fuel (TÆNDBRÆNDSEL) and the flame sensor",
                5: "fire rescue failed: check pellets (silo/bridging), auger and the flame sensor",
@@ -1811,7 +1811,12 @@ def summarise_rows(rows):
     # or None while the day ends in the rescue
     s = {"v": SUMMARY_VERSION, "state_s": {}, "starts": 0, "runs": [], "rescues": 0, "rescue_at": [], "alarms": {},
          "fuel_silo_kg": 0.0, "fuel_est_kg": 0.0, "running_s": 0.0, "drift_power": [], "rows": len(rows),
-         "flame_power": {}}
+         "flame_power": {}, "early": {"s": 0.0, "kg": 0.0, "run_s": 0.0}}
+    # early = recorded seconds, estimated kg and burning seconds before 06:00 of this day: a "pellets day" runs from
+    # 06:00 to 06:00 (day_split), so heat stored in the boiler and house around midnight stays in one day
+    cut = (datetime.datetime.fromtimestamp(rows[0]["epoch"]).replace(hour=6, minute=0, second=0, microsecond=0)
+           .timestamp() if rows else 0)
+    early = s["early"]
     run_start, run_burned = None, False
     prev = None
     for r in rows:
@@ -1819,10 +1824,15 @@ def summarise_rows(rows):
         if prev is not None:
             pst = _int(prev.get("state"))
             dt = min(r["epoch"] - prev["epoch"], 60.0)
+            pre = prev["epoch"] < cut
             if pst is not None:
                 s["state_s"][str(pst)] = s["state_s"].get(str(pst), 0) + dt
+                if pre:
+                    early["s"] += dt
                 if pst in RUNNING:
                     s["running_s"] += dt
+                    if pre:
+                        early["run_s"] += dt
                 if pst == 4:
                     p, g = _f(prev.get("power_pct")), _f(prev.get("fuel_gph"))
                     if p is not None:
@@ -1840,6 +1850,8 @@ def summarise_rows(rows):
                             b[4] += dt
                         if g:
                             s["fuel_est_kg"] += p / 100 * g / 1000 * dt / 3600
+                            if pre:
+                                early["kg"] += p / 100 * g / 1000 * dt / 3600
             a, b = _f(prev.get("silo_kg")), _f(r.get("silo_kg"))
             if a is not None and b is not None and 0 < a - b < 5:      # increases = refill, big jumps = reset
                 s["fuel_silo_kg"] += a - b
@@ -1869,6 +1881,7 @@ def summarise_rows(rows):
     s["fuel_est_kg"] = round(s["fuel_est_kg"], 2)
     s["running_s"] = round(s["running_s"])
     s["flame_power"] = {k: [round(x, 1) for x in v] for k, v in s["flame_power"].items()}
+    s["early"] = {"s": round(early["s"]), "kg": round(early["kg"], 3), "run_s": round(early["run_s"])}
     return s
 
 
@@ -2278,10 +2291,57 @@ class Optimiser:
         # burns were shorter than SHORT_BURN_MIN): the pages show those values
         days = [dict(d, short_burns=short_burns(d.get("runs")), **day_numbers(d, corr)) for d in days]
         per_day = self.per_day()
+        stock = self.pellet_stock()
+        change, wx = self.graphs(per_day, stock)
         return {"days": days, "suggestions": self.suggest(days, per_day), "reset_epoch": reset, "per_day": per_day,
-                "flame_power": flame_by_power(days), "stock": self.pellet_stock(), "ash": self.ash_status(),
-                "health": self._safe_health(days), "lux": self._lux(),
+                "flame_power": flame_by_power(days), "stock": stock, "ash": self.ash_status(),
+                "health": self._safe_health(days), "lux": self._lux(), "change": change, "wx": wx,
                 "window": "last 28 days with burning (idle days are skipped)"}
+
+    def graphs(self, per_day=None, stock=None, now=None):
+        """(graph 1 "Did the change help?", graph 2 "Pellets and the weather"), each None when it cannot be made.
+        Never breaks the report. When graph 2 has learned and there is a forecast, stock["buy_by"] uses it (the flat
+        date stays in stock["buy_by_flat"])."""
+        wx = change = None
+        try:
+            sums = self.report_days()
+            hist = getattr(self.mod, "cfg_hist", None)
+            rows = list(rows_of(hist.path)) if getattr(hist, "path", None) else []
+            seen = {(r.get("time"), r.get("field")) for r in rows}
+            try:
+                rows += [r for r in (hist.feed() if hist else []) if (r.get("time"), r.get("field")) not in seen]
+            except Exception:
+                pass
+            w = getattr(self.mod, "weather", None)
+            wdays = (getattr(w, "days_cache", None) or {}) if w else {}
+            ddir = self.store.dir if self.store and self.store.dir else None
+            wx = weather_fit(sums, wdays, self.correction(), plan_marks(ddir, self.settings, now), rows,
+                             (per_day or self.per_day()).get("kg"), now)
+            fc = w.forecast() if w and hasattr(w, "forecast") else []
+            wx = wx_forecast(wx, fc, stock, now)
+            if stock and wx.get("buy_by") is not None and stock.get("buy_by") is not None:
+                stock["buy_by_flat"], stock["buy_by"], stock["buy_by_src"] = stock["buy_by"], wx["buy_by"], "weather"
+        except Exception as e:
+            self.log(f"# pellets and weather error: {e!r}")
+        try:
+            ig = getattr(self.mod, "ignitions", None)
+            since = (self.settings.get("ignitions") or {}).get("since") or 0
+            recs = [r for r in (list(ig.records) if ig else []) if (r.get("epoch") or 0) >= since]
+            change = change_help(recs, self.report_days() if wx is None else sums, rows if wx is not None else (),
+                                 (self.settings.get("pellets") or {}).get("batches") or [],
+                                 (self.settings.get("health") or {}).get("cleaned_at"), wx, now)
+        except Exception as e:
+            self.log(f"# change graph error: {e!r}")
+        return change, wx
+
+    def phone_lines(self, lang="en", now=None):
+        """The phone "status" answer's lines about the two graphs (empty when there is nothing to say)."""
+        try:
+            change, wx = self.graphs(None, self.pellet_stock(), now)
+            return phone_lines(change, wx, lang, now)
+        except Exception as e:
+            self.log(f"# phone graph lines error: {e!r}")
+            return []
 
     def _lux(self):
         """The flame sensor's per-band table (Burner health -> Flame sensor), or None."""
@@ -2356,6 +2416,457 @@ class Optimiser:
             out.append({"level": "ok", "key": "ok", "p": p, "title": "No problems found",
                         "text": f"Average {p['kg']} kg pellets per burning day."})
         return out
+
+
+# ============================================================================ two graphs: "Did the change help?" and
+# "Pellets and the weather". READ ONLY: they only compare what is already recorded. The pages hold the words; the
+# server sends codes and numbers. kg only: no prices.
+
+# ---- graph 1: did the change help?
+# A change = the boiler settings in force differ from the start before (cfg on each start record, and
+# data/cfg_changes.jsonl), a new pellet batch, or "I cleaned the burner" (Burner health). Changes closer than
+# CH_MERGE_S are one change: all of them are listed and none is credited alone.
+CH_NEED = 5                    # at least 5 comparable starts (or days) on each side before a verdict
+CH_BAND_C = 8                  # comparable = boiler temperature at start within ±8 °C of the middle start of both sides
+CH_MERGE_S = 6 * 3600          # changes within 6 h are one change
+CH_WINDOW_D = 21               # each side looks at most 3 weeks away from the change ...
+CH_MAX_N = 20                  # ... and at most 20 starts
+CH_KEEP = 8                    # the newest 8 changes can be picked
+CH_PHONE_D = 14                # the phone "status" answer mentions a change of the last 14 days
+CH_RATE_D = 0.2                # failed starts / short burns: 20 percentage points apart, and 2 or more on the bad side
+# a difference smaller than this is "the same", even when the middle halves do not overlap
+CH_MIN_DIFF = {"flame": 0.5, "full": 2.0, "power_flame": 5.0, "wx": 0.5}
+CH_LOWER_BETTER = {"flame": True, "full": True, "power_flame": False, "wx": True}
+CH_FULL_BAND = "90"            # "full power" = the 90-100 % power step of the day summaries' flame table
+CH_FULL_MIN_S = 600            # ... with at least 10 minutes there that day
+
+
+def _quart(v):
+    """(first quartile, third quartile) of a list of 2 or more numbers."""
+    q = statistics.quantiles(v, n=4, method="inclusive")
+    return q[0], q[2]
+
+
+def ch_judge(before, after, key):
+    """Verdict for one measure: "few" (under CH_NEED on a side), "better" / "worse" (the middle halves do not
+    overlap and the medians are at least CH_MIN_DIFF apart), else "same"."""
+    if len(before) < CH_NEED or len(after) < CH_NEED:
+        return "few"
+    (b1, b3), (a1, a3) = _quart(before), _quart(after)
+    mb, ma = statistics.median(before), statistics.median(after)
+    if not (a3 < b1 or b3 < a1) or abs(ma - mb) < CH_MIN_DIFF[key]:
+        return "same"
+    return "better" if (ma < mb) == CH_LOWER_BETTER[key] else "worse"
+
+
+def ch_judge_rate(kb, nb, ka, na):
+    """Verdict for a count out of a total (failed starts, short burns): lower is better."""
+    if nb < CH_NEED or na < CH_NEED:
+        return "few"
+    d = ka / na - kb / nb
+    if d >= CH_RATE_D and ka >= 2:
+        return "worse"
+    if -d >= CH_RATE_D and kb >= 2:
+        return "better"
+    return "same"
+
+
+def _net(rows):
+    """Field changes in time order -> one part per field that really ended different: first old, last new."""
+    out = {}
+    for r in rows:
+        f = r["field"]
+        if f in out:
+            out[f]["new"] = r.get("new")
+        else:
+            out[f] = {"k": "cfg", "field": f, "old": r.get("old"), "new": r.get("new")}
+    return [p for p in out.values() if str(p["old"]) != str(p["new"])]
+
+
+def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
+    """The changes, oldest first: [{"t": epoch, "parts": [...]}]. parts: {"k": "cfg", "field", "old", "new"},
+    {"k": "batch", "name"}, {"k": "cleaned"}. starts = the start records (relights included, oldest first)."""
+    starts = sorted((r for r in starts if r.get("epoch")), key=lambda r: r["epoch"])
+    rows = sorted((r for r in cfg_rows if isinstance(r.get("time"), (int, float)) and isinstance(r.get("field"), str)
+                   and r["field"] != "011"), key=lambda r: r["time"])
+    ev = []                                    # (time, [parts])
+    # 1) the settings history: the rows between two starts are one change, at the time of the first of them
+    edges = [r["epoch"] for r in starts]
+    groups = {}
+    for r in rows:
+        i = sum(1 for e in edges if e <= r["time"])      # rows after the same start belong together
+        groups.setdefault(i, []).append(r)
+    covered, at = set(), {}                    # (gap index, field) already seen in the history; gap -> its change
+    for i, g in groups.items():
+        covered |= {(i, r["field"]) for r in g}
+        at[i] = (g[0]["time"], _net(g))
+        ev.append(at[i])
+    # 2) the settings on the start records: a field that differs from the start before (not in the history); in a
+    # gap that has history rows it joins that change (the same time)
+    prev = None
+    for i, r in enumerate(starts):
+        cfg = r.get("cfg") or {}
+        if cfg and prev:
+            parts = [{"k": "cfg", "field": f, "old": prev[f], "new": cfg[f]} for f in sorted(cfg)
+                     if f in prev and str(prev[f]) != str(cfg[f]) and (i, f) not in covered]
+            if parts and i in at:
+                at[i][1].extend(parts)
+            elif parts:
+                ev.append((r["epoch"] - 1, parts))
+        if cfg:
+            prev = cfg
+    ev = [e for e in ev if e[1]]
+    # 3) pellet batches and the burner cleaned
+    for b in batches or []:
+        if isinstance(b, dict) and isinstance(b.get("since"), (int, float)) and b.get("name"):
+            ev.append((b["since"], [{"k": "batch", "name": str(b["name"])[:40]}]))
+    if isinstance(cleaned_at, (int, float)) and cleaned_at > 0:
+        ev.append((cleaned_at, [{"k": "cleaned"}]))
+    ev.sort(key=lambda x: x[0])
+    out = []
+    for t, parts in ev:
+        if out and t - out[-1]["t"] <= CH_MERGE_S:
+            have = out[-1]["parts"]
+            for p in parts:                     # the same field twice: one part from the first old to the last new
+                same = next((q for q in have if q["k"] == "cfg" and p["k"] == "cfg" and q["field"] == p["field"]), None)
+                if same:
+                    same["new"] = p["new"]
+                elif p not in have:
+                    have.append(p)
+            out[-1]["parts"] = [q for q in have if q["k"] != "cfg" or str(q["old"]) != str(q["new"])]
+        else:
+            out.append({"t": round(t), "parts": parts})
+    return [c for c in out if c["parts"]]
+
+
+def _starts_side(starts, lo, hi, first):
+    """The real lightings (no relights, no "went on burning") that ended as lit or failed, lo <= epoch < hi:
+    the CH_MAX_N nearest to the change (first = after the change)."""
+    got = [r for r in starts if lo <= (r.get("epoch") or 0) < hi and not r.get("relight") and not resumed(r)
+           and r.get("result") in ("ok", "failed")]
+    return got[:CH_MAX_N] if first else got[-CH_MAX_N:]
+
+
+def _day_of(epoch):
+    return datetime.date.fromtimestamp(epoch).isoformat()
+
+
+def _med(v, d=1):
+    return round(statistics.median(v), d) if v else None
+
+
+def _row(key, b, a, d=1):
+    r = {"k": key, "before": _med(b, d), "after": _med(a, d), "nb": len(b), "na": len(a), "v": ch_judge(b, a, key)}
+    if len(b) >= 2:
+        r["qb"] = [round(x, d) for x in _quart(b)]
+    if len(a) >= 2:
+        r["qa"] = [round(x, d) for x in _quart(a)]
+    return r
+
+
+def change_compare(ch, prev_t, next_t, starts, days, wx=None, now=None):
+    """One change, before against after. starts = start records (oldest first), days = day summaries (oldest first),
+    wx = the pellets-and-weather fit (weather_fit) or None."""
+    now = now or time.time()
+    t = ch["t"]
+    lo = max(prev_t if prev_t is not None else 0, t - CH_WINDOW_D * 86400)
+    hi = min(next_t if next_t is not None else now + 1, t + CH_WINDOW_D * 86400)
+    b, a = _starts_side(starts, lo, t, False), _starts_side(starts, t, hi, True)
+    temps = [r["boiler"] for r in b + a if isinstance(r.get("boiler"), (int, float))]
+    band = None
+    if temps:                                  # similar boiler temperature at start (unknown ones are left out)
+        mid = statistics.median(temps)
+        band = [round(mid - CH_BAND_C, 1), round(mid + CH_BAND_C, 1)]
+        inb = lambda r: isinstance(r.get("boiler"), (int, float)) and band[0] <= r["boiler"] <= band[1]
+        out_n = sum(1 for r in b + a if not inb(r))
+        b, a = [r for r in b if inb(r)], [r for r in a if inb(r)]
+    else:
+        out_n = 0
+    fl = lambda rs: [flame_min(r) for r in rs if lit(r)]
+    full = lambda rs: [float(r["minutes"]) for r in rs if r.get("result") == "ok" and isinstance(r.get("minutes"), (int, float))]
+    fb, fa = sum(1 for r in b if r["result"] == "failed"), sum(1 for r in a if r["result"] == "failed")
+    rows = [_row("flame", fl(b), fl(a)), _row("full", full(b), full(a), 0),
+            {"k": "failed", "before": fb, "after": fa, "nb": len(b), "na": len(a), "v": ch_judge_rate(fb, len(b), fa, len(a))}]
+    # whole days on each side (the day of the change is left out): flame at full power, short burns
+    td = _day_of(t)
+    dlo, dhi = _day_of(lo), _day_of(hi - 1)
+    db = [d for d in days if dlo <= d.get("day", "") < td and (d.get("running_s") or 0) > 0]
+    da = [d for d in days if td < d.get("day", "") <= dhi and (d.get("running_s") or 0) > 0]
+    def pf(ds):
+        out = []
+        for d in ds:
+            v = (d.get("flame_power") or {}).get(CH_FULL_BAND)
+            if v and len(v) >= 3 and v[0] >= CH_FULL_MIN_S and v[2] > 0:
+                out.append(v[1] / v[2])
+        return out
+    rows.append(_row("power_flame", pf(db), pf(da), 0))
+    rb = [x for d in db for x in (d.get("runs") or []) if x is not None]
+    ra = [x for d in da for x in (d.get("runs") or []) if x is not None]
+    sb, sa = short_burns(rb), short_burns(ra)
+    rows.append({"k": "short", "before": sb, "after": sa, "nb": len(rb), "na": len(ra), "v": ch_judge_rate(sb, len(rb), sa, len(ra))})
+    rows.append(wx_row(wx, dlo, td, dhi))
+    # a pellet batch change mixed in (with another change, or the batch differs inside the window): no verdict
+    kinds = {p["k"] for p in ch["parts"]}
+    names = {batch_key(r.get("batch")) for r in b + a if r.get("batch") not in (None, "—")}
+    mixed = ("batch" in kinds and len(kinds - {"batch"}) > 0) or ("batch" not in kinds and len(names) > 1)
+    if mixed:
+        for r in rows:
+            if r["v"] != "learning":
+                r["v"] = "batch"
+    f = rows[0]
+    if mixed:
+        head = {"k": "batch"}
+    elif f["na"] < CH_NEED:
+        head = {"k": "few", "n": f["na"], "need": CH_NEED}
+    elif f["nb"] < CH_NEED:
+        head = {"k": "few_before", "n": f["nb"], "need": CH_NEED}
+    else:
+        head = {"k": f["v"], "d": round(abs(f["after"] - f["before"]), 1), "n": f["na"]}
+    dots = [[round(r["epoch"]), flame_min(r), 0] for r in b if lit(r)] + [[round(r["epoch"]), flame_min(r), 1] for r in a if lit(r)]
+    return {"t": t, "parts": ch["parts"], "band": band, "left_out": out_n, "from": round(lo), "to": round(hi),
+            "rows": rows, "head": head, "dots": dots, "enough": f["nb"] >= CH_NEED and f["na"] >= CH_NEED}
+
+
+def change_help(starts, days, cfg_rows=(), batches=(), cleaned_at=None, wx=None, now=None):
+    """Graph 1 for the pages: {"changes": [newest first], "pick": index of the default}. None when nothing changed."""
+    now = now or time.time()
+    starts = sorted((r for r in starts if r.get("epoch")), key=lambda r: r["epoch"])
+    cps = [c for c in change_points(starts, cfg_rows, batches, cleaned_at)
+           if starts and c["t"] > starts[0]["epoch"] and c["t"] <= now]
+    if not cps:
+        return None
+    out = []
+    for i in range(len(cps) - 1, max(-1, len(cps) - 1 - CH_KEEP), -1):
+        out.append(change_compare(cps[i], cps[i - 1]["t"] if i else None, cps[i + 1]["t"] if i + 1 < len(cps) else None,
+                                  starts, days, wx, now))
+    pick = next((i for i, c in enumerate(out) if c["enough"]), 0)
+    return {"changes": out, "pick": pick, "need": CH_NEED, "band_c": CH_BAND_C}
+
+
+# ---- graph 2: pellets and the weather
+# One point per "pellets day" (06:00 to 06:00): kg from the fuel estimate (power x fuel rate, with the owner's
+# correction; not the silo counter, which counts in whole kg) against that day's average outside temperature.
+# kg = base + slope x (WX_BASE_C - outside), and only base below WX_BASE_C: a house needs no heating above about
+# 16 °C (sun and people warm it the last degrees), so base = hot water and losses.
+WX_BASE_C = 16.0
+WX_DAY_H = 23                  # a pellets day counts with at least 23 h of readings
+WX_NEED = 14                   # the line shows with 14 such days on one heating plan ...
+WX_SPREAD = 6.0                # ... over at least 6 °C of outside temperature ...
+WX_R2 = 0.5                    # ... and the weather explains at least half of the day-to-day change (R²)
+WX_DAYS = 7                    # the forecast bars
+WX_PLAN_FIELDS = ("000", "005", "006", "007", "008")   # boiler set point and its own minimum mode: part of the plan
+
+
+def day_split(summaries):
+    """Pellets days from the day summaries (oldest first): day D = 06:00 on D to 06:00 on D+1 = the part of D after
+    06:00 plus the part of D+1 before it. [{"day", "h" (hours recorded), "kg_est", "run_h"}]. A day needs the
+    next day's summary; summaries without the 06:00 split (older format) are skipped."""
+    by = {s.get("day"): s for s in summaries if isinstance(s, dict) and s.get("day") and isinstance(s.get("early"), dict)}
+    out = []
+    for d in sorted(by):
+        nx = (datetime.date.fromisoformat(d) + datetime.timedelta(days=1)).isoformat()
+        if nx not in by:
+            continue
+        s, n = by[d], by[nx]
+        tot = sum(v or 0 for v in (s.get("state_s") or {}).values())
+        late_s = tot - s["early"].get("s", 0)
+        out.append({"day": d, "h": round((late_s + n["early"].get("s", 0)) / 3600, 2),
+                    "kg_est": round((s.get("fuel_est_kg") or 0) - s["early"].get("kg", 0) + n["early"].get("kg", 0), 3),
+                    "run_h": round(((s.get("running_s") or 0) - s["early"].get("run_s", 0) + n["early"].get("run_s", 0)) / 3600, 2)})
+    return out
+
+
+def wx_temp(day, wdays):
+    """Average outside temperature of the pellets day that starts at 06:00 on `day`: 18 h of that calendar day and
+    6 h of the next (the weather service gives calendar-day averages). None when that day's is not known."""
+    a = wdays.get(day)
+    if not isinstance(a, (int, float)):
+        return None
+    nx = wdays.get((datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat())
+    return round((18 * a + 6 * nx) / 24, 1) if isinstance(nx, (int, float)) else float(a)
+
+
+def wx_fit(pts):
+    """Least squares of kg = a + b x max(0, WX_BASE_C - T) over [(T, kg)]. {"a", "b", "r2", "rmse"} or None."""
+    if len(pts) < 3:
+        return None
+    xs = [max(0.0, WX_BASE_C - t) for t, _ in pts]
+    ys = [k for _, k in pts]
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx <= 1e-9:
+        return None
+    b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
+    a = my - b * mx
+    res = [y - (a + b * x) for x, y in zip(xs, ys)]
+    ss_res, ss_tot = sum(e * e for e in res), sum((y - my) ** 2 for y in ys)
+    return {"a": round(a, 2), "b": round(b, 3), "r2": round(1 - ss_res / ss_tot, 3) if ss_tot > 1e-9 else 0.0,
+            "rmse": round(math.sqrt(ss_res / max(1, len(pts) - 2)), 2)}
+
+
+def wx_kg(fit, t):
+    return max(0.0, fit["a"] + fit["b"] * max(0.0, WX_BASE_C - t))
+
+
+def plan_marks(data_dir, settings, now=None):
+    """When the monitor's own heating plan last changed (epoch, 0 = never seen changed). The plan's settings are
+    remembered in data/plan_marks.json; a difference from the last time adds a mark (the first look only remembers)."""
+    keep = {"warm": {k: (settings.get("warm") or {}).get(k) for k in
+                     ("enabled", "use_board", "stop_pct", "pause_h", "boosts", "periods", "min_boiler_c")},
+            "schedule": {k: (settings.get("schedule") or {}).get(k) for k in ("enabled", "windows")}}
+    fp = json.dumps(keep, sort_keys=True, default=str)
+    path = os.path.join(data_dir, "plan_marks.json") if data_dir else None
+    old = read_json(path, None) if path else None
+    old = old if isinstance(old, dict) else {}
+    marks = [m for m in (old.get("marks") or []) if isinstance(m, (int, float))]
+    if old.get("fp") != fp and path:
+        if old.get("fp"):
+            marks.append(round(now or time.time()))
+        try:
+            write_json_atomic(path, {"fp": fp, "marks": marks[-20:]})
+        except OSError:
+            pass
+    return max(marks) if marks else 0
+
+
+def weather_fit(summaries, wdays, corr=1.0, plan_since=0, cfg_rows=(), flat=None, now=None):
+    """Graph 2: the learning state, or the line. summaries = day summaries (oldest first), wdays = {day: °C}."""
+    since = max([plan_since or 0] + [r["time"] for r in cfg_rows if isinstance(r.get("time"), (int, float))
+                                     and r.get("field") in WX_PLAN_FIELDS])
+    pts = []
+    for d in day_split(summaries):
+        start = datetime.datetime.fromisoformat(d["day"] + "T06:00").timestamp()
+        tmp = wx_temp(d["day"], wdays)
+        if d["h"] < WX_DAY_H or d["run_h"] <= 0 or tmp is None or start < since:
+            continue
+        pts.append([d["day"], tmp, round(d["kg_est"] * corr, 2)])
+    pts = pts[-60:]
+    temps = [p[1] for p in pts]
+    spread = round(max(temps) - min(temps), 1) if temps else 0.0
+    fit = wx_fit([(p[1], p[2]) for p in pts])
+    out = {"n": len(pts), "need": WX_NEED, "spread": spread, "need_spread": WX_SPREAD, "need_r2": WX_R2,
+           "base_c": WX_BASE_C, "pts": pts, "since": round(since) if since else None, "flat": flat, "learned": False}
+    if len(pts) < WX_NEED:
+        out["why"] = "days"
+    elif spread < WX_SPREAD:
+        out["why"] = "spread"
+    elif not fit or fit["b"] <= 0 or fit["r2"] < WX_R2:
+        out["why"] = "fit"
+    else:
+        out["learned"] = True
+    if fit:
+        out["r2"] = fit["r2"]
+    if out["learned"]:
+        out.update(a=fit["a"], b=fit["b"], band=fit["rmse"], at0=round(wx_kg(fit, 0), 1), hot=round(max(0.0, fit["a"]), 1))
+    return out
+
+
+def parse_forecast(j, today=None):
+    """Open-Meteo's daily answer (daily.time in unixtime, daily.temperature_2m_mean) -> [[day, °C], ...] from today."""
+    d = (j or {}).get("daily") or {}
+    today = today or datetime.date.today().isoformat()
+    out = []
+    for t, c in zip(d.get("time") or [], d.get("temperature_2m_mean") or []):
+        try:
+            day = datetime.date.fromtimestamp(int(t)).isoformat() if not isinstance(t, str) else t[:10]
+            c = float(c)
+        except (TypeError, ValueError, OverflowError, OSError):
+            continue
+        if day >= today and math.isfinite(c):
+            out.append([day, round(c, 1)])
+    return out[:16]
+
+
+def wx_forecast(wx, forecast, stock=None, now=None):
+    """The next WX_DAYS days from the forecast with the learned line, and (with pellets at home) when they last
+    and when to buy (at the reserve). Beyond the forecast the forecast week's average is used. Adds to wx."""
+    if not wx.get("learned") or not forecast:
+        return wx
+    now = now or time.time()
+    today = datetime.date.fromtimestamp(now).isoformat()
+    fit = {"a": wx["a"], "b": wx["b"]}
+    days = [[d, c, round(wx_kg(fit, c), 1)] for d, c in forecast if d > today][:WX_DAYS]
+    if not days:
+        return wx
+    wx["fc"] = days
+    wx["fc_kg"] = round(sum(x[2] for x in days))
+    wx["fc_band"] = round(wx["band"] * math.sqrt(len(days)))
+    if stock and isinstance(stock.get("left"), (int, float)):
+        rate = [x[2] for x in days]
+        avg = statistics.mean(rate)
+        def when(kg):
+            if kg <= 0:
+                return now
+            mid = datetime.datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            rest = 1 - (now - mid.timestamp()) / 86400
+            tod = next((x[1] for x in forecast if x[0] == today), None)
+            use = (wx_kg(fit, tod) if tod is not None else avg) * rest
+            if use >= kg:
+                return now + kg / max(use, 1e-9) * rest * 86400
+            kg -= use
+            for i, r in enumerate(rate):
+                if r >= kg:
+                    return (mid + datetime.timedelta(days=i + 1)).timestamp() + kg / r * 86400
+                kg -= r
+            if avg < 0.2:
+                return None
+            return (mid + datetime.timedelta(days=len(rate) + 1)).timestamp() + kg / avg * 86400
+        wx["last_to"] = when(stock["left"])
+        wx["buy_by"] = when(max(0.0, stock["left"] - (stock.get("reserve_kg") or 0)))
+        if wx["last_to"] is not None:
+            wx["last_to"] = round(wx["last_to"])
+        if wx["buy_by"] is not None:
+            wx["buy_by"] = round(wx["buy_by"])
+    return wx
+
+
+def wx_row(wx, dlo, td, dhi):
+    """The last row of graph 1: kg a day against the learned line, before and after (days on the fit's own plan).
+    Values are "kg a day at 0 °C": the line at 0 °C plus the middle of how far the days were from the line."""
+    if not wx or not wx.get("learned"):
+        return {"k": "wx", "v": "learning", "n": (wx or {}).get("n", 0), "need": WX_NEED}
+    fit = {"a": wx["a"], "b": wx["b"]}
+    at0 = wx_kg(fit, 0)
+    res = lambda lo, hi: [at0 + p[2] - wx_kg(fit, p[1]) for p in wx["pts"] if lo <= p[0] < hi]
+    b = res(dlo, td)
+    a = res((datetime.date.fromisoformat(td) + datetime.timedelta(days=1)).isoformat(),
+            (datetime.date.fromisoformat(dhi) + datetime.timedelta(days=1)).isoformat())
+    return _row("wx", b, a)
+
+
+def phone_lines(change, wx, lang="en", now=None):
+    """The extra lines of the phone "status" answer: a change of the last CH_PHONE_D days, and the forecast."""
+    now = now or time.time()
+    W = PHONE_WORDS.get(lang, PHONE_WORDS["en"])
+    out = []
+    dm = lambda e: datetime.date.fromtimestamp(e).strftime("%d-%m")
+    ch = (change or {}).get("changes") or []
+    if ch and now - ch[0]["t"] <= CH_PHONE_D * 86400:
+        c = ch[0]
+        h = c["head"]
+        k = h["k"]
+        txt = W["ch_" + k].format(d=f"{h.get('d', 0):.1f}".replace(".", "," if lang == "da" else "."),
+                                  n=h.get("n", 0), need=h.get("need", CH_NEED))
+        out.append(W["ch"].format(t=dm(c["t"]), x=txt))
+    if wx and wx.get("learned") and wx.get("fc"):
+        s = W["fc"].format(kg=wx["fc_kg"])
+        if wx.get("last_to"):
+            s += " " + W["last"].format(t=dm(wx["last_to"]))
+        out.append(s)
+    return out
+
+
+PHONE_WORDS = {
+    "en": {"ch": "Since the change {t}: {x}", "ch_better": "flame {d} min sooner ({n} starts)",
+           "ch_worse": "flame {d} min later ({n} starts)", "ch_same": "no clear change in time to flame ({n} starts)",
+           "ch_few": "too few starts to say ({n} of {need})", "ch_few_before": "too few starts before it to compare",
+           "ch_batch": "the pellet batch changed too, so no verdict",
+           "fc": "Next 7 days: about {kg} kg.", "last": "Pellets last to about {t}."},
+    "da": {"ch": "Siden ændringen {t}: {x}", "ch_better": "flamme {d} min hurtigere ({n} starter)",
+           "ch_worse": "flamme {d} min langsommere ({n} starter)", "ch_same": "ingen klar forskel i tid til flamme ({n} starter)",
+           "ch_few": "for få starter til at sige noget ({n} af {need})", "ch_few_before": "for få starter før til at sammenligne",
+           "ch_batch": "pillepartiet skiftede også, så ingen dom",
+           "fc": "De næste 7 dage: ca. {kg} kg.", "last": "Pillerne rækker til ca. {t}."}}
 
 
 # ============================================================================ hot-water tank (VVB) sensor
@@ -3239,6 +3750,8 @@ class Weather:
     def fetch(self, lat, lon):
         j = self._get(self.URL, {"latitude": lat, "longitude": lon, "current": "temperature_2m",
                                  "hourly": "temperature_2m", "past_hours": 336, "forecast_hours": 48,
+                                 # the daily mean for "Pellets and the weather" (the same one request, same place)
+                                 "daily": "temperature_2m_mean", "forecast_days": 8,
                                  "timeformat": "unixtime", "timezone": "auto"})
         cur = j.get("current") or {}
         h = j.get("hourly") or {}
@@ -3266,7 +3779,8 @@ class Weather:
             except OSError:
                 pass
         self.cache = {"at": time.time(), "c": round(float(c), 1) if c is not None else None,
-                      "hourly": [x for x in hourly if x[0] >= time.time() - 2 * 86400], "lat": lat, "lon": lon}
+                      "hourly": [x for x in hourly if x[0] >= time.time() - 2 * 86400], "lat": lat, "lon": lon,
+                      "forecast": parse_forecast(j)}
         if self.cache_path:
             write_json_atomic(self.cache_path, self.cache)
             if self.cache["c"] is not None:
@@ -3297,6 +3811,15 @@ class Weather:
             return d if isinstance(d, dict) else {}
         except (OSError, ValueError, TypeError):
             return {}
+
+    def forecast(self, now=None):
+        """[[day, daily mean °C], ...] from today, for the place in use, when the last answer is under 2 days old."""
+        c, k = self.cfg(), self.cache
+        now = now or time.time()
+        if not c.get("enabled") or k.get("lat") != c.get("lat") or k.get("lon") != c.get("lon")                 or not k.get("at") or now - k["at"] > 2 * 86400:
+            return []
+        today = datetime.date.fromtimestamp(now).isoformat()
+        return [x for x in (k.get("forecast") or []) if isinstance(x, list) and len(x) == 2 and x[0] >= today]
 
     def feed(self):
         c, k = self.cfg(), self.cache

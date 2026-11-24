@@ -100,36 +100,6 @@ def idea_time_per_state(rows):
                 {"type": "stack", "labels": labels, "series": series})
 
 
-def idea_warm_rate(rows):
-    """How fast the boiler warms per power step while RUNNING (°C per 10 min)."""
-    bins = collections.defaultdict(list)
-    run = [r for r in rows if r.get("state") == 4 and r.get("boiler_c") is not None and r.get("power_pct") is not None]
-    j = 0
-    for i, r in enumerate(run):
-        while j < len(run) and run[j]["epoch"] < r["epoch"] + 120:
-            j += 1
-        if j >= len(run) or run[j]["epoch"] - r["epoch"] > 180:
-            continue
-        r2 = run[j]
-        if abs((r2.get("power_pct") or 0) - r["power_pct"]) > 8:
-            continue
-        rate = (r2["boiler_c"] - r["boiler_c"]) / (r2["epoch"] - r["epoch"]) * 600
-        bins[int(r["power_pct"] // 10 * 10)].append(rate)
-    keys = [k for k in sorted(bins) if len(bins[k]) >= 20]
-    if len(keys) < 2:
-        return None
-    data = [round(statistics.median(bins[k]), 2) for k in keys]
-    return card("warm_rate", "How fast the boiler warms at each power", "Hvor hurtigt kedlen varmer ved hver effekt",
-                "Change in boiler temperature per 10 minutes while running, by power. Above 0 = the boiler gains heat "
-                "(the house takes less than the burner gives); around 0 = balance. It depends on how much heat the house "
-                "takes at that moment, so compare days with similar weather.",
-                "Ændring i kedeltemperatur pr. 10 minutter under drift, efter effekt. Over 0 = kedlen bliver varmere "
-                "(huset tager mindre end brænderen giver); omkring 0 = balance. Det afhænger af hvor meget varme huset "
-                "tager lige da, så sammenlign dage med ens vejr.",
-                {"type": "bar", "labels": [f"{k}–{k + 10} %" for k in keys],
-                 "series": [{"name": {"en": "°C per 10 min", "da": "°C pr. 10 min"}, "unit": "°C", "data": data}]})
-
-
 def start_records(rows):
     """The same start list as /api/ignitions (IgnitionLog.report): data/ignitions.jsonl from the last reset on,
     the newest 500. Without the file (a fresh install) the records are made from the rows by the same steps."""
@@ -615,7 +585,7 @@ def idea_cooling_vs_outside(rows, room_c=18.0):
                  "ylabel": {"en": "hours to lose half the warmth", "da": "timer til halv varme"}})
 
 
-IDEAS = [idea_start_substeps, idea_warm_by, idea_pellets_per_period, idea_power_levels, idea_cooling_vs_outside, idea_burn_vs_start, idea_cooling, idea_time_per_state, idea_ignition_times, idea_warm_rate, idea_minimum_mode]
+IDEAS = [idea_start_substeps, idea_warm_by, idea_pellets_per_period, idea_power_levels, idea_cooling_vs_outside, idea_burn_vs_start, idea_cooling, idea_time_per_state, idea_ignition_times, idea_minimum_mode]
 # idea_fields_decoded (raw field names) is developer notes, not for the owner's Discoveries page; kept for reference.
 
 

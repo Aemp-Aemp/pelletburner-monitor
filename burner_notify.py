@@ -106,6 +106,15 @@ TEXTS = {
     "monitor_start": ("low", "arrows_counterclockwise", {
         "en": ("Monitor started", "The burner monitor has (re)started."),
         "da": ("Monitoren startede", "Brænder-monitoren er (gen)startet.")}),
+    "monitor_updated": ("default", "arrow_up", {
+        "en": ("Monitor updated", "The monitor is now on {to} (was {frm})."),
+        "da": ("Monitoren er opdateret", "Monitoren kører nu {to} (før {frm}).")}),
+    "monitor_rolled_back": ("default", "warning", {
+        "en": ("Update did not work", "{tried} did not work here. The monitor went back to {cur} by itself."),
+        "da": ("Opdateringen virkede ikke", "{tried} virkede ikke her. Monitoren gik selv tilbage til {cur}.")}),
+    "monitor_went_back": ("low", "arrow_down", {
+        "en": ("Monitor went back", "The monitor is back on {cur}, as asked on the page."),
+        "da": ("Monitoren gik tilbage", "Monitoren kører igen {cur}, som valgt på siden.")}),
     "daily": ("low", "bar_chart", {
         "en": ("Last 24 h at the boiler", "Burned {h} h, {starts} start(s), about {kg} kg pellets, {al} alarm(s)."),
         "da": ("Seneste 24 t ved kedlen", "Brændt {h} t, {starts} start(er), ca. {kg} kg piller, {al} alarm(er).")}),
@@ -122,7 +131,8 @@ WIFI_TEXT = {"en": " Wi-Fi was lost at {lost_at} and came back at {back_at}.",
              "da": " Wi-Fi'en forsvandt kl. {lost_at} og kom igen kl. {back_at}."}
 # which on/off switch (settings ntfy.events) a message belongs to
 SWITCH = {"ash_bin": "ash", "ash_clean": "ash", "ash_plate": "ash", "pi_disk": "pi", "pi_volt": "pi", "pi_hot": "pi",
-          "net_weak": "net", "net_down": "net"}
+          "net_weak": "net", "net_down": "net",
+          "monitor_updated": "monitor_start", "monitor_rolled_back": "monitor_start", "monitor_went_back": "monitor_start"}
 NET_TELL_MIN = 30              # weak Wi-Fi / no internet this long before a message
 
 ASH_PLATE_DA = {"stuck_out": "Askepladen er ikke kommet hjem igen. Tjek at intet blokerer den, og tjek kontakten.",
@@ -418,7 +428,50 @@ class Notifier:
         if start:
             threading.Thread(target=self._send_loop, daemon=True, name="ntfy-send").start()
             threading.Thread(target=self._watch_loop, daemon=True, name="ntfy-watch").start()
-            self.notify("monitor_start")
+            threading.Thread(target=self._tell_start, args=(data_dir,), daemon=True, name="ntfy-start").start()
+
+    def _tell_start(self, data_dir, wait=480, step=10, sleep=time.sleep):
+        """The start message. When this start is the swap of an update, the updater is still testing the new
+        version: wait (up to 8 min) until it has written the result, so the message can say "updated" or "went back"."""
+        waited = 0
+        while waited < wait and self.update_busy(data_dir):
+            sleep(step)
+            waited += step
+        key, p = self.start_message(data_dir)
+        self.notify(key, rate_key="monitor_start", **p)
+
+    @staticmethod
+    def update_busy(data_dir, now=None):
+        """True while update.json (written in the last 15 min) says the updater is swapping or testing."""
+        try:
+            path = os.path.join(data_dir, "update.json")
+            if (now or time.time()) - os.path.getmtime(path) > 900:
+                return False
+            with open(path, encoding="utf-8") as fh:
+                return (json.load(fh) or {}).get("phase") in ("install", "back")
+        except (TypeError, OSError, ValueError, AttributeError):
+            return False
+
+    @staticmethod
+    def start_message(data_dir, now=None):
+        """Why the monitor (re)started: an update in the last 20 min says so ("updated v1.0.2 -> v1.0.5", "did not
+        work - went back"), otherwise the plain "monitor started". -> (key, {params})."""
+        try:
+            with open(os.path.join(data_dir, "update.json"), encoding="utf-8") as fh:
+                d = json.load(fh)
+            fresh = (now or time.time()) - float(d.get("checked") or 0) < 20 * 60
+        except (TypeError, OSError, ValueError, AttributeError):
+            return "monitor_start", {}
+        if not isinstance(d, dict) or not fresh:
+            return "monitor_start", {}
+        code, cur, frm, to = d.get("code"), d.get("current") or "", d.get("from") or "", d.get("to") or ""
+        if code == "updated" and frm and to:
+            return "monitor_updated", {"frm": frm, "to": to}
+        if code == "rolled_back" and cur:
+            return "monitor_rolled_back", {"tried": (to if to != cur else frm) or "the new version", "cur": cur}
+        if code == "went_back" and cur:
+            return "monitor_went_back", {"cur": cur}
+        return "monitor_start", {}
 
     # ------------------------------------------------------------------ settings / state
     def cfg(self):

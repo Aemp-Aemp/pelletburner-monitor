@@ -507,37 +507,6 @@
 },
 {
 "chart":{
-"labels":[
-"50–60 %",
-"100–110 %"
-],
-"series":[
-{
-"data":[
-0.5,
-2.0
-],
-"name":{
-"da":"°C pr. 10 min",
-"en":"°C per 10 min"
-},
-"unit":"°C"
-}
-],
-"type":"bar"
-},
-"id":"warm_rate",
-"text":{
-"da":"Ændring i kedeltemperatur pr. 10 minutter under drift, efter effekt. Over 0 = kedlen bliver varmere (huset tager mindre end brænderen giver); omkring 0 = balance. Det afhænger af hvor meget varme huset tager lige da, så sammenlign dage med ens vejr.",
-"en":"Change in boiler temperature per 10 minutes while running, by power. Above 0 = the boiler gains heat (the house takes less than the burner gives); around 0 = balance. It depends on how much heat the house takes at that moment, so compare days with similar weather."
-},
-"title":{
-"da":"Hvor hurtigt kedlen varmer ved hver effekt",
-"en":"How fast the boiler warms at each power"
-}
-},
-{
-"chart":{
 "points":[
 [
 419.8,
