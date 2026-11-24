@@ -408,6 +408,7 @@ suite. About 10 minutes, nothing leaves the PC. `--quick` skips the test suite.
 | `burner_ext.py` | Saving history, MQTT / Home Assistant bridge, settings sync |
 | `burner_notify.py` | Phone alerts (ntfy) and their certificates |
 | `burner_phone.py` | Start/stop from the phone (ntfy): PIN and one-time code |
+| `burner_graph.py` | Today's graph as a small picture for the phone alerts |
 | `burner_common.py` | Shared tables (state and alarm names) and small helpers |
 | `burner_sniff.py` | Frame decoder (listen-only tool) |
 | `scada/home.html` | The main page |

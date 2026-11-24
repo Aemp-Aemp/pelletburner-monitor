@@ -201,11 +201,12 @@ WANT = {"en": ("Trouble lighting?", "Lights slowly: about 9.0 min to flame in th
                "Optændingsrapport (pillefyr-monitor 9.9.9)", "tændte ikke (alarm 4)", "tændte, 9,0 min til flamme",
                "Tændbrændsel (TÆNDBRÆNDSEL): 60 s / 40 s  !", "Brændsel (BRÆNDSEL KG/T): 3,4 kg/h / 3,4 kg/h")}
 # how each page is given a made-up help answer and drawn again
-DRAW = {"home": "h=>{ IGN=Object.assign({},IGN||{},{help:h}); LH_OPEN=null; renderHistory(); }",
+# /home: the help is inside the Time to flame row of Burner health (#bh-light); BH_USER = the owner's open / close
+DRAW = {"home": "h=>{ IGN=Object.assign({},IGN||{},{help:h}); BH_USER={}; renderHistory(); }",
         "classic": "h=>{ LH_OPEN=null; renderIgnitions(Object.assign({},lastIgR||{records:[]},{help:h})); }"}
-CARD = """()=>{ const c=document.getElementById('lightHelp'), d=document.getElementById('lhDet');
+CARD = """()=>{ const c=document.getElementById('lightHelp'), d=document.getElementById('lhDet')||document.getElementById('bh-light');
   if(!c||!d) return null;
-  return {open:d.open, title:d.querySelector('summary b').textContent, verdict:document.getElementById('lhVerdict').textContent,
+  return {open:d.open, title:document.getElementById('lhTitle').textContent, verdict:document.getElementById('lhVerdict').textContent,
     rows:[...c.querySelectorAll('#lhTable tr[data-id]')].map(r=>[r.dataset.id,r.dataset.mark||'',...[...r.cells].map(x=>x.innerText.trim())]),
     steps:c.querySelectorAll('#lhSteps li').length, btn:c.querySelector('[data-lh=copy]').textContent,
     link:c.querySelector('a[href^=guide]').getAttribute('href'), text:c.innerText, wide:c.scrollWidth>c.clientWidth+1}; }"""
@@ -236,7 +237,7 @@ with _synth.Replay(8819) as rp, sync_playwright() as pw:
             pg.on("console", lambda m, e=errs: m.type == "error" and e.append(m.text))
             pg.on("pageerror", lambda x, e=errs: e.append("pageerror: " + str(x)))
             pg.goto(rp.base + path, wait_until="load")
-            pg.wait_for_function("document.getElementById('lhDet')", timeout=20000)
+            pg.wait_for_function("document.getElementById('lhDet')||document.getElementById('bh-light')", timeout=20000)
             tag = f"[{lang}] {page}"
             c = pg.evaluate(CARD)
             check(f"{tag}: the card shows with the replay's own data, closed while lighting is fine",
@@ -286,25 +287,27 @@ with _synth.Replay(8819) as rp, sync_playwright() as pw:
             pg.wait_for_timeout(300)
             check(f"{tag}: Copy lighting report sends nothing" + (f" {blocked[:2]}" if blocked else ""), not blocked)
             # closed by hand: it stays closed when the page draws again
-            pg.evaluate("document.getElementById('lhDet').open=false")
+            if page == "home":
+                pg.click("#bh-light > summary")
+            else:
+                pg.evaluate("document.getElementById('lhDet').open=false")
             pg.wait_for_timeout(100)
-            pg.evaluate(DRAW[page].replace("LH_OPEN=null;", ""), SLOW)
+            pg.evaluate(DRAW[page].replace("LH_OPEN=null;", "").replace("BH_USER={};", ""), SLOW)
             check(f"{tag}: closed by hand stays closed", pg.evaluate(CARD)["open"] is False)
             pg.evaluate(DRAW[page], FINE)
             c = pg.evaluate(CARD)
             check(f"{tag}: lights fine -> closed, and says so", not c["open"] and c["verdict"] == w[2], c["verdict"])
             if page == "home":
-                # the Burner health row points to the card when lighting is slow or fails
-                n = pg.evaluate("""h=>{ IGN=Object.assign({},IGN||{},{help:h}); LH_OPEN=null;
+                # the Time to flame row opens by itself when the check is bad, and Now's line leads to it
+                o = pg.evaluate("""h=>{ IGN=Object.assign({},IGN||{},{help:h}); BH_USER={};
                     OPT=Object.assign({},OPT,{health:{checks:[{k:"light",st:"bad",why:"fail",p:{a:2,n:10}}]}});
-                    renderHistory(); return document.querySelectorAll('#health [data-lh=open]').length; }""", FINE)
-                check(f"{tag}: Burner health row links to the card when lighting is bad", n == 1)
-                pg.click("#health [data-lh=open]")
-                pg.wait_for_timeout(300)
-                check(f"{tag}: the link opens the card", pg.evaluate(CARD)["open"] is True)
-                n = pg.evaluate("""()=>{ OPT=Object.assign({},OPT,{health:{checks:[{k:"light",st:"ok",why:"ok",p:{a:4,usual:4}}]}});
-                    renderHistory(); return document.querySelectorAll('#health [data-lh=open]').length; }""")
-                check(f"{tag}: no link while lighting is fine", n == 0)
+                    renderHistory(); return document.getElementById('bh-light').open; }""", FINE)
+                check(f"{tag}: Burner health: Time to flame opens by itself when lighting is bad", o is True)
+                pg.evaluate("""()=>{ const el=document.createElement('div'); el.id='tmpLine'; document.body.prepend(el); renderHealthLine(el); }""")
+                check(f"{tag}: the Now line leads to that row", pg.evaluate("(document.querySelector('#tmpLine [data-bhgo]')||{}).dataset.bhgo") == "light")
+                o = pg.evaluate("""()=>{ OPT=Object.assign({},OPT,{health:{checks:[{k:"light",st:"ok",why:"ok",p:{a:4,usual:4}}]}});
+                    BH_USER={}; renderHistory(); return document.getElementById('bh-light').open; }""")
+                check(f"{tag}: closed while lighting is fine", o is False)
             check(f"{tag}: no console errors" + (f" {errs[:3]}" if errs else ""), not errs)
             check(f"{tag}: the page sent nothing (GET only)" + (f" {blocked[:2]}" if blocked else ""), not blocked)
             ctx.close()

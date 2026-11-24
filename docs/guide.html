@@ -194,7 +194,7 @@ footer{margin-top:60px;padding-top:16px;border-top:1px solid var(--line);color:v
 <ul>
 <li>what the burner is doing right now, with a live picture of the fire;</li>
 <li>a heating plan: "warm by 05:30", "keep warm 17:15–19:30", "start at 09:00". Under the plan: was the boiler warm in time the last mornings, and how many kg of pellets each period uses a day;</li>
-<li>pellets left at home, ash bin fill level, burner health compared with its own normal;</li>
+<li>pellets left at home, ash bin fill level, burner health compared with its own normal (tap a row on History for the details: the last starts and settings, the flame sensor per power level, the times of fire rescues);</li>
 <li>history charts (short burns under 30 min show as the light part of "Starts per day"), lighting times per start and per pellet batch (names that differ only in case or spaces are one batch; when the boiler type setting changes, the "usual" lighting times start again), outside temperature (optional);</li>
 <li><strong>Share my burner</strong> (on History): one picture with your burner's numbers (lighting time, burns and pellets per day, alarms, health) to post in a group. It holds no place, names or pellet brand, and nothing is uploaded: the picture is saved on your phone or PC. <strong>Picture for service</strong> next to it makes a tall picture for troubleshooting help: settings against factory, the last 10 starts, flame and fan by power, burn lengths, boiler temperature, ash plate turns, alarms and data gaps. The first time, it asks for three numbers the boiler does not send (software version, MIN YDELSE, fan rpm at 100 %); they are kept on the monitor (change them in Settings → My boiler) and never sent to the boiler. Skip is fine.</li>
 </ul>
@@ -382,7 +382,7 @@ Use Home Assistant's address on your network if <code>homeassistant.local</code>
 <li>Weak Wi-Fi for 30 minutes; or, when the internet is back, that it was down for 30 minutes or more (no message can get out while it is down). The Now tab also shows a short notice after 15 minutes.</li>
 <li>Off by default: burner started, burner stopped (with who did it, e.g. “Started by: heating plan”, the same words as on the page), monitor (re)started, a short summary of the last 24 h (burning hours, starts, pellets, alarms) at a time you choose.</li>
 </ul>
-<p>The same message comes at most once every 30 minutes. Messages are in the page's language (English or Danish). A failed start is not a separate message: the boiler stops with alarm 4, which is sent as an alarm. You can use your own ntfy server instead of ntfy.sh: <strong>New alerts topic</strong> sits next to the topic; the server and the certificates are in the folded part <strong>Own server and certificates</strong>.</p>
+<p>The same message comes at most once every 30 minutes. Messages are in the page's language (English or Danish). A failed start is not a separate message: the boiler stops with alarm 4, which is sent as an alarm. <strong>Add today's graph to the status reply</strong> (on by default; switch it off there) adds a small picture of the “Today and tomorrow morning” chart to the answer when you send <code>status</code> from the phone (from 07:00 to 22:00, at most one picture an hour); the picture goes via the ntfy server like the text. You can use your own ntfy server instead of ntfy.sh: <strong>New alerts topic</strong> sits next to the topic; the server and the certificates are in the folded part <strong>Own server and certificates</strong>.</p>
 <p><strong>Certificates:</strong> the connection to the server is always checked; this can't be turned off. The certificate list is kept in <code>data/ca/</code>. <strong>Update certificates</strong> fetches a new one from curl.se (checked with the current one; the old is kept as <code>.bak</code>), or you can upload a file. If sending fails with a certificate problem, check the Pi's clock first — a wrong clock breaks certificates.</p>
 <h4 id="software-phone-commands">Start/stop from the phone (optional, off)</h4>
 <p>Start or stop the boiler from the ntfy app, from anywhere. Set it up under <strong>Settings → Phone alerts → Start/stop from the phone</strong>: type a PIN (4–6 digits) or press <strong>Make a PIN</strong>, save it, then turn it on. The page shows the PIN (anyone who can use the page can start the boiler anyway) and warns if it is easy to guess. Alerts must be on, and remote start/stop must be allowed (<code>BURNER_REMOTE_START=1</code>, the Docker default).</p>
@@ -426,6 +426,7 @@ for t in _*_test.py; do python "$t" || echo "FAILED: $t"; done</code></pre>
 <tr><td><code>burner_ext.py</code></td><td>Saving history, MQTT / Home Assistant bridge, settings sync</td></tr>
 <tr><td><code>burner_notify.py</code></td><td>Phone alerts (ntfy) and their certificates</td></tr>
 <tr><td><code>burner_phone.py</code></td><td>Start/stop from the phone (ntfy): PIN and one-time code</td></tr>
+<tr><td><code>burner_graph.py</code></td><td>Today's graph as a small picture for the phone alerts</td></tr>
 <tr><td><code>burner_common.py</code></td><td>Shared tables (state and alarm names) and small helpers</td></tr>
 <tr><td><code>burner_sniff.py</code></td><td>Frame decoder (listen-only tool)</td></tr>
 <tr><td><code>scada/home.html</code></td><td>The main page</td></tr>
@@ -653,7 +654,7 @@ for t in _*_test.py; do python "$t" || echo "FAILED: $t"; done</code></pre>
 <li>Put your old lighting values back in MONTØR → OPTÆNDING. Start with TÆNDBRÆNDSEL.</li>
 <li>Soot or coarse ash as well: raise the fan's 30 % point (see <a href="#trouble-soot-or-coarse-ash">Soot or coarse ash</a>).</li>
 </ol>
-<p>The monitor's card "Trouble lighting?" (/home → History, /classic → Analysis) shows the last 10 starts and the lighting settings next to the factory values. Still bad? Press <strong>Copy lighting report</strong> and paste the text where you ask for help; the report includes your start times. The card only reads; it never changes a boiler setting. It cannot read BLÆSER YDELSE or the service menu.</p>
+<p>The monitor's "Trouble lighting?" help (/home → History → Burner health → <em>Time to flame</em>, /classic → Analysis) shows the last 10 starts, where a boiler setting changed between them, and the lighting settings next to the factory values. Still bad? Press <strong>Copy lighting report</strong> and paste the text where you ask for help; the report includes your start times. The card only reads; it never changes a boiler setting. It cannot read BLÆSER YDELSE or the service menu.</p>
 <details class="more"><summary>Details: what the upgrade changes</summary>
 <p>Factory values, read from the software files:</p>
 <div class="tw"><table><thead><tr><th>Setting</th><th>1.13</th><th>1.30</th><th>1.40 and 1.41</th></tr></thead><tbody>

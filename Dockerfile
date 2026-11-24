@@ -8,12 +8,14 @@ ENV PYTHONUNBUFFERED=1 \
     BURNER_REMOTE_START=1 \
     BURNER_LOG_MAX_MB=50
 
-RUN pip install --no-cache-dir pyserial==3.5 segno==1.6.1 \
+# Pillow (the phone-alert graph, burner_graph.py): binary wheels for arm64 and x86_64, no compiler needed.
+RUN pip install --no-cache-dir pyserial==3.5 segno==1.6.1 pillow==11.3.0 \
  && useradd --uid 1000 --create-home --groups dialout burner
 
 WORKDIR /app
-COPY burner_responder.py burner_common.py burner_ext.py burner_features.py burner_notify.py burner_phone.py burner_sniff.py ./
+COPY burner_responder.py burner_common.py burner_ext.py burner_features.py burner_notify.py burner_phone.py burner_graph.py burner_sniff.py ./
 COPY scada/ ./scada/
+COPY fonts/ ./fonts/
 COPY docs/guide.html ./docs/
 RUN mkdir -p /app/data && chown -R burner:burner /app
 

@@ -211,8 +211,9 @@ class PhoneCommands:
         title, body = tx.get(lang) or tx["en"]
         for k, v in p.items():
             title, body = title.replace("{" + k + "}", str(v)), body.replace("{" + k + "}", str(v))
-        try:
-            self.nt.q.put_nowait({"key": "phone", "title": title, "body": body, "priority": prio, "tags": tags})
+        try:                                    # "status": today's graph too when ntfy.graph is on
+            self.nt.q.put_nowait({"key": "phone", "title": title, "body": body, "priority": prio, "tags": tags,
+                                  "graph": key == "status"})
         except Exception:
             self.log("# phone commands: queue full, answer dropped")
 
@@ -336,7 +337,7 @@ class PhoneCommands:
         if st is None or now - (lat.get("epoch") or 0) > N.LINK_LOST_S:
             lines.append(w["none"])
         else:
-            word = C.STATE_PAGE["da"][st].capitalize() if lang == "da" and 0 <= st < 8 else C.STATE_WORDS.get(st, str(st))
+            word = (C.STATE_WORDS_DA if lang == "da" else C.STATE_WORDS).get(st, str(st))
             lines.append(w["state"].format(s=word))
             bc = C.to_float(f.get("boiler_c"))
             if bc is not None:

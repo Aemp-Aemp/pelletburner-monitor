@@ -394,87 +394,9 @@
     </div>
 
 
-    <div class="card" style="margin-top:12px">
-      <div class="schtop">
-        <label class="sw-toggle"><input type="checkbox" id="vvEnabled"><span></span></label>
-        <div><b id="t_vv_title"></b><div class="schstat" id="vvStatus">—</div></div>
-        <div class="spacer"></div>
-        <span class="savemsg" id="vvMsg"></span>
-        <button class="primary" id="vvSave"></button>
-      </div>
-      <fieldset id="vvFs" class="schfs" style="margin-top:12px">
-        <div class="form">
-          <label><span id="t_vv_source"></span><select id="vvSource">
-            <option value="mqtt"></option><option value="http"></option><option value="onewire"></option></select></label>
-          <label><span id="t_vv_age"></span><input type="number" id="vvAge" min="1" max="120"> <i>min</i></label>
-          <label><span id="t_vv_safe"></span><input type="number" id="vvSafe" min="40" max="95"> <i>°C</i></label>
-        </div>
-        <div class="note" id="vvHow"></div>
-        <div class="note" id="t_vv_note"></div>
-      </fieldset>
-    </div>
-    <!-- outside temperature (same setting as on the new page) -->
-    <div class="card" style="margin-top:12px">
-      <div class="schtop">
-        <div><b id="t_wx_title"></b><div class="schstat" id="wxStatus">—</div></div>
-        <div class="spacer"></div>
-        <span class="savemsg" id="wxMsg"></span>
-        <button id="wxOff" style="display:none"></button>
-      </div>
-      <div class="form" style="margin-top:10px">
-        <label class="wrapl"><span id="t_wx_find"></span><input type="text" id="wxQ" maxlength="60" style="width:200px;background:#0d1117;color:#e6edf3;border:1px solid #2b3443;border-radius:6px;padding:6px 8px" autocomplete="off"> <button id="wxFind"></button></label>
-        <label id="wxPickL" class="wrapl" style="display:none"><span id="t_wx_pick"></span><select id="wxSel" style="max-width:280px;background:#0d1117;color:#e6edf3;border:1px solid #2b3443;border-radius:6px;padding:6px 8px"></select> <button class="primary" id="wxUse"></button></label>
-      </div>
-      <div class="note" id="t_wx_note"></div>
-    </div>
+    <!-- hot-water tank sensor, outside temperature, ash bin size: on the new page (Settings) -->
+    <p style="margin:12px 2px 0;font-size:13px" id="movedHome"><a href="home#settings" id="t_moved_home"></a></p>
 
-    <!-- ash bin size (same setting as on the new page) -->
-    <div class="card" style="margin-top:12px">
-      <div class="schtop">
-        <div><b id="t_ab_title"></b><div class="schstat" id="abStatus">—</div></div>
-        <div class="spacer"></div>
-        <span class="savemsg" id="abMsg"></span>
-        <button class="primary" id="abSave"></button>
-      </div>
-      <div class="form" style="margin-top:10px"><label><span id="t_ab_size"></span><input type="text" class="dec" inputmode="decimal" id="abSize" maxlength="6"> <i>kg</i></label></div>
-      <div class="note" id="t_ab_note"></div>
-    </div>
-
-    <!-- old start windows: replaced by the heating plan on the new page, kept folded for reference -->
-    <details class="card" id="oldSch" style="margin-top:12px"><summary id="t_old_sch"></summary>
-    <div class="card" style="margin-top:12px">
-      <div class="schtop">
-        <label class="sw-toggle"><input type="checkbox" id="schEnabled"><span></span></label>
-        <div><b id="t_sch_title"></b><div class="schstat" id="schStatus">—</div></div>
-        <div class="spacer"></div>
-        <span class="savemsg" id="schMsg"></span>
-        <button class="primary" id="schSave"></button>
-      </div>
-      <div class="note" id="schArmNote"></div>
-    </div>
-    <fieldset id="schFs" class="schfs">
-      <div class="grid cols">
-        <div class="card">
-          <h3 id="t_sch_windows"></h3>
-          <div id="schWins"></div>
-          <button id="schAdd" style="margin-top:10px"></button>
-          <div class="note" id="t_sch_win_note"></div>
-        </div>
-        <div class="card">
-          <h3 id="t_sch_opts"></h3>
-          <div class="form">
-            <label><span id="t_sch_minoff"></span><input type="number" id="schMinOff" min="0" max="1440"> <i>min</i></label>
-            <label><span id="t_sch_maxst"></span><input type="number" id="schMaxSt" min="1" max="48"> <i></i></label>
-            <label><span id="t_sch_short"></span><input type="number" id="schShort" min="0" max="600"> <i>min</i></label>
-            <label><span id="t_sch_att"></span><input type="number" id="schAtt" min="1" max="10"> <i></i></label>
-            <label><span id="t_sch_wait"></span><input type="number" id="schWait" min="30" max="900"> <i>s</i></label>
-            <label class="chk"><input type="checkbox" id="schOverride"> <span id="t_sch_override"></span></label>
-          </div>
-          <div class="note" id="t_sch_idle_note"></div>
-        </div>
-      </div>
-    </fieldset>
-    </details>
   </div>
 
   <!-- ===== Discoveries tab: auto-generated from the data by scada/insights_gen.py ===== -->
@@ -727,12 +649,19 @@ const lhBoiler=h=>lhT("boiler",{m:h.type!=null?LH_KW[h.type]:lhT("type_none"),v:
 // the inside of the card. c = the page's colours {warn, dim, line}, guide = the link to the guide section
 function lhHTML(h,c,guide){
   if(!h) return "";
-  const bad=lhBad(h), rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
+  const bad=lhBad(h);
+  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b id="lhTitle">${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
+    ${lhBody(h,c,guide)}</details>`;
+}
+// the inside of the card without its fold: the settings table, what to try, Copy lighting report (also used inside the
+// Time to flame row of Burner health on /home)
+function lhBody(h,c,guide){
+  if(!h) return "";
+  const rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
   const notes=[...new Set(rows.filter(r=>r.mark&&r.mark!=="diff"&&r.mark!=="unused").map(r=>r.mark))];
   const nm=r=>esc(lhT("n_"+r.id))+(r.mark==="unused"?` <span style="color:${c.dim}">(${esc(lhT("m_unused"))})</span>`:"");
   const mk=r=>!r.mark||r.mark==="unused"?"":r.mark==="diff"?` <span title="${esc(lhT("m_diff"))}" style="color:${c.dim}">●</span>`:` <b style="color:${c.warn}">!</b>`;
-  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b>${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
-    <p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
+  return `<p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
     ${any?`<div style="overflow-x:auto"><table id="lhTable" style="width:100%;border-collapse:collapse;font-size:14px"><tr>${["c_set","c_now","c_fac","c_ref"].map(k=>`<th style="${td};color:${c.dim};font-weight:600">${esc(lhT(k))}</th>`).join("")}</tr>
       ${rows.map(r=>`<tr data-id="${esc(r.id)}"${r.mark?` data-mark="${esc(r.mark)}"`:""}><td style="${td}">${nm(r)}</td><td style="${td};white-space:nowrap"><b>${esc(lhVal(r.id,r.now))}</b>${mk(r)}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.fac))}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.ref))}</td></tr>`).join("")}</table></div>
     ${notes.map(m=>`<p style="margin:8px 0 0;color:${c.warn}"><b>!</b> ${esc(lhT("m_"+m))}</p>`).join("")}
@@ -743,7 +672,7 @@ function lhHTML(h,c,guide){
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px"><button type="button" class="btn sec" data-lh="copy">${esc(lhT("copy"))}</button>
       <a class="link" href="${esc(guide)}" target="_blank" rel="noopener">${esc(lhT("guide"))}</a></div>
     <p id="lhCopyNote" style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(lhT("copy_note"))}</p>
-    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p></details>`;
+    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p>`;
 }
 // the plain text for the clipboard: boiler type, software, settings, the last starts, the monitor's version.
 // Nothing personal: no names, addresses, topics, place or pellet batch names.
@@ -770,6 +699,152 @@ function lhCopy(txt,btn){
   document.body.appendChild(ta); ta.select(); try{ if(document.execCommand("copy")) done(); }catch(e){} ta.remove();
 }
 document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="lhDet") LH_OPEN=e.target.open; },true);
+
+// ---- Burner health details: what the rows of the Burner health checklist open (/home History) and the fire
+// rescue words of the /classic suggestions. READ ONLY: the server sends codes, numbers and times; the words are here.
+const BH_TXT={
+ en:{bh_rescue:"Fire rescues", bh_rescue_none:"None in the last {d} days that burned.",
+  bh_rescue_one:"1 in the last {d} days that burned. The boiler relit it.", bh_rescue_many:"{a} in the last {d} days that burned.",
+  bh_rescue_fail:"{f} of {a} in the last {d} days that burned did not relight.",
+  rs_one:"Fire rescue on {w}: the flame went out while burning, and {o}.",
+  rs_many:"{n} fire rescues in the last {d} days that burned (since {from}). The flame went out while burning. The last ones:",
+  rs_ok:"the boiler relit it", rs_failed:"it did not relight: the boiler stopped with an alarm", rs_stopped:"the boiler stopped",
+  rs_null:"the day ended before it was over", rs_when_none:"time not saved",
+  rs_advice:"Check the pellet feed (silo, pellets stuck, auger) and clean the flame sensor.",
+  rs_period:"“The last {d} days that burned” = the days of this list that had burning; days without burning are skipped.",
+  rs_list_h:"The newest fire rescues", rs_none:"No fire rescues in the saved days.",
+  st_h:"The last {n} starts", st_none:"No starts recorded yet.", st_by:"started by {s}", st_flame:"flame after {a} min",
+  st_full:"full heat after {a} min", st_off:"off {a} h before", st_r_ok:"Lit", st_r_failed:"Did not light", st_r_stopped:"Stopped",
+  st_r_resumed:"Went on burning", st_r_relight:"Relit after a pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Went on burning = the fire was still there, so there was no lighting. It is left out of every average.",
+  st_cfg_h:"Lighting settings compared", st_cfg_n:"{n} starts, {ok} lit", st_cfg_flame:"to flame about {a} min",
+  st_cfg_full:"to full heat about {a} min", st_cfg_now:"In force now", st_cfg_none:"The settings were the same for every start.",
+  st_cfg_note:"Only the settings that differ between starts. Typical = the middle value of the starts that lit.",
+  fs_h:"Is the flame sensor dirty?", fs_band_low:"Low power (under 45 %)", fs_band_mid:"Middle power (45–70 %)", fs_band_high:"High power (70 % and up)",
+  fs_learn:"Learning: {m} of {nm} min steady burning, {b} of {nb} burns.", fs_none:"No steady burning at this power yet.",
+  fs_ready:"Usual {a}, now {c}.", fs_drop:"{p} % less light than usual.", fs_same:"As usual.",
+  fs_how:"It learns from steady burning: 5-minute stretches at an even power, from 10 minutes into a burn. A power level is ready after {nm} minutes spread over {nb} burns, so short burns add up. Readings from the saved history count too.",
+  fs_clean:"I cleaned the flame sensor", fs_clean_q:"Start learning the flame sensor’s normal level again from now?",
+  fs_cleaned:"Learning again since {d}.", fs_nofield:"No flame reading is chosen (classic page → Analysis).",
+  cc_fan:"Fan at {p} %", cc_field:"Setting {f}"},
+ da:{bh_rescue:"Redder ilden", bh_rescue_none:"Ingen i de seneste {d} dage med fyring.",
+  bh_rescue_one:"1 i de seneste {d} dage med fyring. Kedlen tændte igen.", bh_rescue_many:"{a} i de seneste {d} dage med fyring.",
+  bh_rescue_fail:"{f} af {a} i de seneste {d} dage med fyring tændte ikke igen.",
+  rs_one:"Redder ilden {w}: flammen gik ud under fyring, og {o}.",
+  rs_many:"Redder ilden {n} gange i de seneste {d} dage med fyring (siden {from}). Flammen gik ud under fyring. De seneste:",
+  rs_ok:"kedlen tændte den igen", rs_failed:"den tændte ikke igen: kedlen stoppede med en alarm", rs_stopped:"kedlen stoppede",
+  rs_null:"dagen sluttede, før den var ovre", rs_when_none:"tidspunkt ikke gemt",
+  rs_advice:"Tjek pilletilførslen (silo, piller der hænger fast, snegl) og rens flammeføleren.",
+  rs_period:"“De seneste {d} dage med fyring” = de dage på listen, hvor der blev fyret; dage uden fyring springes over.",
+  rs_list_h:"De nyeste gange", rs_none:"Ingen gange i de gemte dage.",
+  st_h:"De seneste {n} starter", st_none:"Ingen starter registreret endnu.", st_by:"startet af {s}", st_flame:"flamme efter {a} min",
+  st_full:"fuld varme efter {a} min", st_off:"slukket {a} t før", st_r_ok:"Tændte", st_r_failed:"Tændte ikke", st_r_stopped:"Stoppet",
+  st_r_resumed:"Brændte videre", st_r_relight:"Tændt igen efter pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Brændte videre = ilden var der stadig, så der var ingen optænding. Den tælles ikke med i gennemsnit.",
+  st_cfg_h:"Indstillinger for optænding sammenlignet", st_cfg_n:"{n} starter, {ok} tændte", st_cfg_flame:"til flamme ca. {a} min",
+  st_cfg_full:"til fuld varme ca. {a} min", st_cfg_now:"Gælder nu", st_cfg_none:"Indstillingerne var de samme ved alle starter.",
+  st_cfg_note:"Kun de indstillinger, der er forskellige fra start til start. Typisk = midterværdien af de starter, der tændte.",
+  fs_h:"Er flammeføleren snavset?", fs_band_low:"Lav ydelse (under 45 %)", fs_band_mid:"Mellem ydelse (45–70 %)", fs_band_high:"Høj ydelse (70 % og op)",
+  fs_learn:"Lærer: {m} af {nm} min stabil fyring, {b} af {nb} fyringer.", fs_none:"Ingen stabil fyring ved denne ydelse endnu.",
+  fs_ready:"Normalt {a}, nu {c}.", fs_drop:"{p} % mindre lys end normalt.", fs_same:"Som normalt.",
+  fs_how:"Den lærer af stabil fyring: 5 minutter ad gangen ved jævn ydelse, fra 10 minutter inde i en fyring. Et ydelsesniveau er klar efter {nm} minutter fordelt på {nb} fyringer, så korte fyringer lægges sammen. Målinger fra den gemte historik tæller også med.",
+  fs_clean:"Jeg har renset flammeføleren", fs_clean_q:"Lær flammefølerens normale niveau igen fra nu?",
+  fs_cleaned:"Lærer igen siden {d}.", fs_nofield:"Der er ikke valgt en flammemåling (klassisk side → Analyse).",
+  cc_fan:"Røgsuger ved {p} %", cc_field:"Indstilling {f}"}};
+const bhT=(k,p)=>{ let s=(BH_TXT[LANG]||BH_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
+// "Tue 24 Nov 13:42" (Danish: "tirs. 24. nov. 13:42")
+const bhWhen=ep=>ep?new Date(ep*1000).toLocaleDateString(LOC(),{weekday:"short",day:"numeric",month:"short"})+" "+clock(ep):bhT("rs_when_none");
+// the boiler's own settings in plain words (EN/DA): the settings changes and the lighting settings compared
+const CC_NAMES={en:{"000":"Set point (°C)","001":"Fuel (g per hour)","002":"Air clean interval (min)","003":"Air clean time (s)",
+  "004":"Ash clean interval (g)","005":"Minimum mode stop at (%)","006":"Minimum mode pause (h)","007":"Boost 1","008":"Boost 2",
+  "009":"Auger calibration (g)","010":"Silo capacity (kg)","012":"Stepping temp. limit (°C)","013":"Pump start temperature",
+  "014":"Start fuel (s)","015":"Ignition air (%)","016":"Warm-up (s)","017":"Ignition timeout (s)","018":"Max doses",
+  "019":"Top-up dose (s)","020":"Top-up interval (s)","031":"Max power (%)","033":"Boiler type","034":"Dose size",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Software version","041":"Hardware version"},
+ da:{"000":"Kedeltemperatur (°C)","001":"Brændsel (g pr. time)","002":"Luftrens interval (min)","003":"Luftrens sugetid (s)",
+  "004":"Askerens interval (g)","005":"Minimumdrift stop ved (%)","006":"Minimumdrift pause (t)","007":"Boost 1","008":"Boost 2",
+  "009":"Snegl afvejning (g)","010":"Silo kapacitet (kg)","012":"Stepping temp. grænse (°C)","013":"Pumpe starttemperatur",
+  "014":"Tændbrændsel (s)","015":"Tænd luft (%)","016":"Opvarmning (s)","017":"Optænding timeout (s)","018":"Max doser",
+  "019":"Suplering (s)","020":"Interval mellem doser (s)","031":"Max ydelse (%)","033":"Kedeltype","034":"Dosis str.",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Softwareversion","041":"Hardwareversion"}};
+const ccName=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(n) return n+" ("+f+")";
+  const k=+f; return k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10})+" ("+f+")":bhT("cc_field",{f:f}); };
+// name and unit apart: "Start fuel (s)" -> ["Start fuel","s"]
+const ccParts=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(!n){ const k=+f; return [k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10}):bhT("cc_field",{f:f}),k>=21&&k<=30?"rpm":""]; }
+  const m=n.match(/^(.*?)\s*\(([^)]*)\)$/); return m?[m[1],m[2]]:[n,""]; };
+const ccNum=x=>typeof x==="number"?fmt(x,Number.isInteger(x)?0:(Math.abs(x)<1?3:1)):String(x==null?"–":x);
+// one settings change as "Start fuel 60 → 40 s"
+const ccChange=r=>{ const [n,u]=ccParts(r.field); return n+" "+ccNum(r.old)+" → "+ccNum(r.new)+(u?" "+u:""); };
+
+// ---- fire rescues: [[epoch, "ok" / "failed" / "stopped" / null], ...] newest first
+const rsOutcome=o=>bhT("rs_"+(o||"null"));
+// the /classic suggestion and the /home detail: when, and whether the boiler relit it. p = the server's numbers
+// (n, days, from, last, ok), "this period" said in words
+function rescText(p){
+  const last=(p&&p.last)||[], n=(p&&p.n)||0;
+  if(n===1&&last.length) return bhT("rs_one",{w:bhWhen(last[0][0]),o:rsOutcome(last[0][1])})+" "+bhT("rs_advice");
+  const from=p&&p.from?new Date(p.from+"T12:00").toLocaleDateString(LOC(),{day:"numeric",month:"short"}):"—";
+  return bhT("rs_many",{n,d:(p&&p.days)||"?",from})+" "+last.map(x=>bhWhen(x[0])+" ("+rsOutcome(x[1])+")").join("; ")+". "+bhT("rs_advice");
+}
+// the list of times for the Burner health detail. c = the page's colours {warn, dim, line}
+function rescListHTML(p,c){
+  const L=(p&&p.list)||[];
+  if(!L.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("rs_none"))}</p>`;
+  return `<p style="margin:0 0 6px"><b>${esc(bhT("rs_list_h"))}</b></p><div id="rsList">${L.map(x=>`<div style="padding:7px 0;border-top:1px solid ${c.line}">
+    <b style="font-weight:600">${esc(bhWhen(x[0]))}</b><br><span style="color:${x[1]==="ok"?c.dim:c.warn}">${esc(sentenceCase(rsOutcome(x[1])))}</span></div>`).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("rs_advice"))} ${esc(bhT("rs_period",{d:p.d||0}))}</p>`;
+}
+const sentenceCase=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+
+// ---- the last starts with the settings changes between them, and the lighting settings compared (api/ignitions:
+// records, by_settings, cfg_changes). Stacked rows, so it fits a phone. by = the page's "started by" words for a record.
+function startsHTML(ign,c,by,n){
+  n=n||10;
+  const recs=((ign&&ign.records)||[]).slice(-n).reverse(), ch=((ign&&ign.cfg_changes)||[]).slice();
+  if(!recs.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("st_none"))}</p>`;
+  const mark=rows=>{ const t0=rows[0].time; return `<div class="stMark" style="padding:6px 0;border-top:1px solid ${c.line};color:${c.warn};font-size:14px">▲ ${esc(bhWhen(t0))} ${esc(rows.map(ccChange).join(", "))}</div>`; };
+  // the changes after the newest start go first, then between each start and the one before it
+  const take=(a,b)=>{ const got=ch.filter(r=>r.time>=a&&r.time<b); if(!got.length) return "";
+    const g={}; got.forEach(r=>{ const k=Math.round(r.time/60); (g[k]=g[k]||[]).push(r); });
+    return Object.keys(g).sort((x,y)=>y-x).map(k=>mark(g[k])).join(""); };
+  let h=`<p style="margin:0 0 4px"><b>${esc(bhT("st_h",{n:recs.length}))}</b></p><div id="stList">`, anyRes=false;
+  recs.forEach((r,i)=>{
+    h+=take(r.epoch, i?recs[i-1].epoch:Infinity);
+    const res=r.resumed?"resumed":r.relight&&r.result==="ok"?"relight":r.result; if(r.resumed) anyRes=true;
+    const col=res==="ok"||res==="relight"?c.ok||c.dim:res==="failed"?c.warn:c.dim, s=by?by(r):"";
+    const bits=[s?bhT("st_by",{s}):"", r.flame_min!=null&&!r.resumed?bhT("st_flame",{a:fmt(r.flame_min,1)}):"",
+      r.result==="ok"&&r.minutes!=null?bhT("st_full",{a:fmt(r.minutes,1)}):"", r.off_h!=null?bhT("st_off",{a:fmt(r.off_h,1)}):""].filter(Boolean);
+    h+=`<div class="stRow" data-res="${esc(res)}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhWhen(r.epoch))}</b> · <span style="color:${col}">${esc(bhT("st_r_"+res))}${r.alarm?" ("+esc(bhT("st_alarm",{a:r.alarm}))+")":""}</span>
+      ${bits.length?`<br><span style="color:${c.dim};font-size:14px">${esc(bits.join(" · "))}</span>`:""}</div>`; });
+  h+=`</div>`;                                       // changes before the oldest start shown are left out
+  if(anyRes) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_resumed_note"))}</p>`;
+  return h+cfgCmpHTML(ign,c);
+}
+// the lighting settings compared: per combination how many starts, how many lit, typical time to flame and to full heat
+function cfgCmpHTML(ign,c){
+  const S=(ign&&ign.by_settings)||[];
+  let h=`<p style="margin:14px 0 4px"><b>${esc(bhT("st_cfg_h"))}</b></p>`;
+  if(!S.length) h+=`<p style="margin:0;color:${c.dim}">—</p>`;
+  h+=`<div id="cfgCmp">`+S.map(s=>{ const cf=s.cfg||{}, name=Object.keys(cf).map(k=>{ const [nm,u]=ccParts(k); return nm+" "+ccNum(cf[k])+(u?" "+u:""); }).join(", ")||"—";
+    return `<div class="cfgRow"${s.now?' data-now="1"':""} style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(name)}</b>${s.now?` <span style="color:${c.ok||c.dim};font-weight:600">● ${esc(bhT("st_cfg_now"))}</span>`:""}
+      <br><span style="color:${c.dim};font-size:14px">${esc([bhT("st_cfg_n",{n:s.n,ok:s.ok}), s.flame_min!=null?bhT("st_cfg_flame",{a:fmt(s.flame_min,1)}):"", s.median_min!=null?bhT("st_cfg_full",{a:fmt(s.median_min,1)}):""].filter(Boolean).join(" · "))}</span></div>`; }).join("")+`</div>`;
+  if(S.length===1) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_none"))}</p>`;
+  return h+`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_note"))}</p>`;
+}
+
+// ---- the flame sensor per power band (api/optimiser "lux"): learned so far, or usual against now
+function luxHTML(lx,c){
+  if(!lx) return "";
+  if(lx.status==="no_field") return `<p style="margin:0;color:${c.dim}">${esc(bhT("fs_nofield"))}</p>`;
+  const B=lx.bands||{}, nm=lx.need_min||30, nb=lx.need_burns||3;
+  const row=k=>{ const b=B[k]||{}; let s, warn=false;
+    if(!b.n) s=bhT("fs_none");
+    else if(b.learning) s=bhT("fs_learn",{m:Math.min(b.min||0,nm),nm,b:Math.min(b.burns||0,nb),nb});
+    else { warn=(b.drop_pct||0)>=10; s=bhT("fs_ready",{a:fmt(b.baseline,0),c:fmt(b.current,0)})+" "+(warn?bhT("fs_drop",{p:fmt(b.drop_pct,0)}):bhT("fs_same")); }
+    return `<div class="fsRow" data-band="${k}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhT("fs_band_"+k))}</b><br><span style="color:${warn?c.warn:c.dim};font-size:14px">${esc(s)}</span></div>`; };
+  return `<p style="margin:0 0 4px"><b>${esc(bhT("fs_h"))}</b></p><div id="fsBands">${["low","mid","high"].map(row).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("fs_how",{nm,nb}))}${lx.reset_epoch?" "+esc(bhT("fs_cleaned",{d:bhWhen(lx.reset_epoch)})):""}</p>`;
+}
 
 // ---- software update card (a Raspberry Pi with the updater, pi/pelletpi-update.sh). The monitor says which state
 // it is (api/update "view", made by burner_ext.update_info); here are the words and the buttons for both pages.
@@ -1170,7 +1245,7 @@ const I18N = {
 // ---- strings for the Schedule and Optimiser tabs ----
 Object.assign(I18N.en, {
   tab_disc:"Discoveries", disc_head:"Made automatically from your own data ({n} readings, updated {t}). New cards appear as the program finds something worth showing. Ideas, not advice: check before you change a setting.", disc_none:"Nothing yet: the discoveries are made from the saved data and show up after the next update.",
-  tab_sch:"Settings", tab_opt:"Analysis", old_sch:"Old start windows (replaced by the heating plan on the new page; kept for reference)", starts_today:"starts today: {n}",
+  tab_sch:"Settings", tab_opt:"Analysis", moved_home:"These settings are on the new page: Settings", starts_today:"starts today: {n}",
   sd_blocked_manual:"stopped by hand in this time slot", sd_blocked_gave_up:"gave up after the start attempts",
   sd_running:"{st}", sd_pending:"attempt {n} of {max}", sd_pending_ending:"ending the WAITING pause first",
   sd_cooldown:"{left} min left", sd_max_starts:"{n} of {max} today",
@@ -1203,10 +1278,10 @@ Object.assign(I18N.en, {
   ig_table:"Last start attempts", ig_settings:"Ignition settings compared",
   ig_note:"Change one ignition setting at a time and compare: the table above groups the attempts by the settings in force.",
   ig_batch:"New pellet batch…", ig_batch_now:"Pellets now: {b}", ig_batch_ask:"Name of the new pellet batch (e.g. brand + month):",
-  ig_none:"No start attempts recorded yet.", ig_ok:"running", ig_failed:"failed", ig_stopped:"stopped",
+  ig_none:"No start attempts recorded yet.", ig_ok:"running", ig_failed:"failed", ig_stopped:"stopped", ig_resumed:"went on burning (not counted)",
   th_when:"When", th_result:"Result", th_min:"To full run (min)", th_boiler0:"Boiler at start", th_off:"Off (h)",
   th_feed:"Feed time (s)", th_rpm:"Fan rpm (min–max)", th_peak:"Max flame", th_batch:"Pellet batch", th_set:"Settings",
-  th_tries:"Starts", th_okn:"Reached running", th_med:"Typical min",
+  th_tries:"Starts", th_okn:"Reached running", th_med:"Typical min to full heat", th_medf:"Typical min to flame", th_now:"in force now",
   lg_failed:"failed", lg_stopped:"stopped",
   ar_title:"Auto alarm reset", ar_alarms:"Alarms that may be reset automatically:",
   ar_wait:"Wait after the alarm before reset and restart", ar_max:"Max attempts per 24 hours",
@@ -1243,10 +1318,10 @@ Object.assign(I18N.en, {
   th_day:"Day", th_burn:"Burning h", th_starts:"Starts", th_run:"Avg. run (min)", th_fuel:"Pellets kg",
   th_resc:"Fire rescues", th_alarms:"Alarms", th_power:"Avg power %",
   opt_none:"No data yet.", sg_none:"Nothing to suggest right now.",
-  lux_title:"Flame sensor — steady burning", lux_state:"Is the flame sensor dirty?", lux_lg_s:"flame during steady burning (one dot per 10 min)",
+  lux_title:"Flame sensor — steady burning", lux_state:"Is the flame sensor dirty?", lux_lg_s:"flame during steady burning (one dot per 5 min)",
   lux_lg_b:"normal level", lux_field:"Flame sensor input", lux_reset:"Sensor cleaned — relearn normal level",
-  lux_reset_note:"Learns again over 6 h of steady burning per power level; no warnings meanwhile.",
-  lux_reset_confirm:"Relearn the normal flame level?\n\nDo this after cleaning the flame sensor or other service. It takes 6 h of steady burning per power level, with no warnings meanwhile.",
+  lux_reset_note:"Learns again from 30 min of steady burning per power level, spread over at least 3 burns; no warnings meanwhile.",
+  lux_reset_confirm:"Relearn the normal flame level?\n\nDo this after cleaning the flame sensor or other service. It takes 30 min of steady burning per power level, spread over at least 3 burns, with no warnings meanwhile.",
   lux_s_no_field:"Choose which input is the flame sensor (test: shine a torch at the sensor and see whether 003 or 004 changes).",
   lux_s_no_data:"No steady burning recorded yet.", lux_s_learning:"Learning the normal level…",
   lux_s_ok:"Normal", lux_s_warning:"Check the sensor",
@@ -1300,7 +1375,7 @@ Object.assign(I18N.en, {
 });
 Object.assign(I18N.da, {
   tab_disc:"Opdagelser", disc_head:"Lavet automatisk ud fra dine egne data ({n} målinger, opdateret {t}). Nye kort dukker op når programmet finder noget der er værd at vise. Idéer, ikke råd: tjek før du ændrer en indstilling.", disc_none:"Intet endnu: opdagelserne laves ud fra de gemte data og vises efter næste opdatering.",
-  tab_sch:"Indstillinger", tab_opt:"Analyse", old_sch:"Gamle startvinduer (erstattet af varmeplanen på den nye side; gemt til reference)", starts_today:"starter i dag: {n}",
+  tab_sch:"Indstillinger", tab_opt:"Analyse", moved_home:"Disse indstillinger er på den nye side: Indstillinger", starts_today:"starter i dag: {n}",
   sd_blocked_manual:"stoppet i hånden i dette tidsrum", sd_blocked_gave_up:"opgav efter startforsøgene",
   sd_running:"{st}", sd_pending:"forsøg {n} af {max}", sd_pending_ending:"afbryder først AFVENTER-pausen",
   sd_cooldown:"{left} min tilbage", sd_max_starts:"{n} af {max} i dag",
@@ -1333,10 +1408,10 @@ Object.assign(I18N.da, {
   ig_table:"Seneste startforsøg", ig_settings:"Optændingsindstillinger sammenlignet",
   ig_note:"Ændr én optændingsindstilling ad gangen og sammenlign: tabellen ovenfor samler forsøgene efter de indstillinger, der var i brug.",
   ig_batch:"Nyt parti piller…", ig_batch_now:"Piller nu: {b}", ig_batch_ask:"Navn på det nye parti piller (fx mærke + måned):",
-  ig_none:"Ingen startforsøg registreret endnu.", ig_ok:"drift", ig_failed:"fejlede", ig_stopped:"stoppet",
+  ig_none:"Ingen startforsøg registreret endnu.", ig_ok:"drift", ig_failed:"fejlede", ig_stopped:"stoppet", ig_resumed:"brændte videre (tælles ikke)",
   th_when:"Hvornår", th_result:"Resultat", th_min:"Til fuld drift (min)", th_boiler0:"Kedel ved start", th_off:"Slukket (t)",
   th_feed:"Tilførselstid (s)", th_rpm:"Røgsuger o/min (min–maks)", th_peak:"Højeste flamme", th_batch:"Pilleparti", th_set:"Indstillinger",
-  th_tries:"Starter", th_okn:"Nåede drift", th_med:"Typisk min",
+  th_tries:"Starter", th_okn:"Nåede drift", th_med:"Typisk min til fuld varme", th_medf:"Typisk min til flamme", th_now:"gælder nu",
   lg_failed:"fejlede", lg_stopped:"stoppet",
   ar_title:"Automatisk alarmnulstilling", ar_alarms:"Alarmer der må nulstilles automatisk:",
   ar_wait:"Ventetid efter alarm før nulstilling og genstart", ar_max:"Maks. forsøg pr. døgn",
@@ -1373,10 +1448,10 @@ Object.assign(I18N.da, {
   th_day:"Dag", th_burn:"Fyring t", th_starts:"Starter", th_run:"Gns. periode (min)", th_fuel:"Piller kg",
   th_resc:"Redder ilden", th_alarms:"Alarmer", th_power:"Gns. ydelse %",
   opt_none:"Ingen data endnu.", sg_none:"Ingen forslag lige nu.",
-  lux_title:"Flammeføler — stabil fyring", lux_state:"Er flammeføleren snavset?", lux_lg_s:"flamme ved stabil fyring (én prik pr. 10 min)",
+  lux_title:"Flammeføler — stabil fyring", lux_state:"Er flammeføleren snavset?", lux_lg_s:"flamme ved stabil fyring (én prik pr. 5 min)",
   lux_lg_b:"normalniveau", lux_field:"Indgang for flammeføler", lux_reset:"Føler renset — lær normalniveau igen",
-  lux_reset_note:"Lærer igen over 6 timers stabil fyring pr. ydelsesniveau; ingen advarsler imens.",
-  lux_reset_confirm:"Lær flammens normalniveau igen?\n\nGør det efter rensning af flammeføleren eller anden service. Det tager 6 timers stabil fyring pr. ydelsesniveau, og der kommer ingen advarsler imens.",
+  lux_reset_note:"Lærer igen af 30 min stabil fyring pr. ydelsesniveau, fordelt på mindst 3 fyringer; ingen advarsler imens.",
+  lux_reset_confirm:"Lær flammens normalniveau igen?\n\nGør det efter rensning af flammeføleren eller anden service. Det tager 30 min stabil fyring pr. ydelsesniveau, fordelt på mindst 3 fyringer, og der kommer ingen advarsler imens.",
   lux_s_no_field:"Vælg, hvilken indgang der er flammeføleren (test: lys med en lommelygte på føleren og se, om 003 eller 004 ændrer sig).",
   lux_s_no_data:"Ingen stabil fyring registreret endnu.", lux_s_learning:"Lærer det normale niveau…",
   lux_s_ok:"Normal", lux_s_warning:"Tjek føleren",
@@ -2396,12 +2471,10 @@ function applyStatic(){
   S("t_brand","brand"); S("t_subtitle","subtitle"); S("t_poll","poll");
   S("t_tab_live","tab_live"); S("t_tab_seq","tab_seq"); S("t_tab_sch","tab_sch");
   document.getElementById("t_tab_opt").textContent=t("tab_opt");   // no longer beta
-  S("t_old_sch","old_sch");
   document.getElementById("t_tab_disc").innerHTML=esc(t("tab_disc"))+'<span class="beta">AUTO</span>';
   if(activeTab==="disc") renderDiscoveries();
   if(activeTab==="opt") scrollHints();
-  ["sch_title","sch_windows","sch_opts","sch_win_note","sch_minoff","sch_maxst","sch_short","sch_att","sch_wait",
-   "sch_override","sch_idle_note","opt_sugg","opt_days","opt_lg_fuel","opt_lg_starts","opt_table","opt_reset_note",
+  ["opt_sugg","opt_days","opt_lg_fuel","opt_lg_starts","opt_table","opt_reset_note",
    "lux_title","lux_state","lux_lg_s","lux_lg_b","lux_field","lux_reset_note",
    "fan_title","fan_state","fan_lg","fan_note","fan_reset_note",
    "ar_title","ar_alarms","ar_wait","ar_max","ar_note",
@@ -2410,16 +2483,13 @@ function applyStatic(){
   S("igBatch","ig_batch");
   S("arSave","sch_save");
   if(typeof AR!=="undefined" && AR) fillAutoReset(AR);
-  document.title=t("page_title"); S("vvSave","sch_save"); ["vv_title","vv_source","vv_age","vv_safe","vv_note","st_title","st_note"].forEach(k=>S("t_"+k,k));
-  document.getElementById("t_vv_title").innerHTML=esc(t("vv_title"))+'<span class="beta">BETA</span>';   // own tank sensor: beta
+  document.title=t("page_title"); ["st_title","st_note","moved_home"].forEach(k=>S("t_"+k,k));
   S("wmSave","sch_save"); ["set_home","wm_title","wm_board","wm_stop","wm_after","wm_pause","wm_boosts","wm_note","wm_minc","wm_restart","wm_pump"].forEach(k=>S("t_"+k,k));
-  S("wxFind","wx_search"); S("t_u_h","u_h"); S("wxUse","wx_use"); S("wxOff","wx_off"); S("abSave","sch_save"); ["wx_title","wx_find","wx_pick","wx_note","ab_title","ab_size","ab_note"].forEach(k=>S("t_"+k,k));
+  S("t_u_h","u_h");
   if(typeof LASTWM!=="undefined" && LASTWM) renderWarm(LASTWM);      // status line in the new language
   S("stDeliver","st_deliver"); S("stCount","st_count"); S("layoutSwitch","layout_new");
-  if(typeof VV!=="undefined" && VV) vvHow();
-  S("schSave","sch_save"); S("schAdd","sch_add"); S("optReset","opt_reset"); S("luxReset","lux_reset");
+  S("optReset","opt_reset"); S("luxReset","lux_reset");
   S("fanReset","fan_reset");
-  if(typeof SCH!=="undefined" && SCH) renderWins();
   document.getElementById("demoBtn").title=t("demo_title");
   S("t_h_fsm","h_fsm"); S("t_h_adv","h_adv"); S("t_h_temps","h_temps"); S("t_h_powfan","h_powfan");
   // PID title has a bold word + faded suffix
@@ -2506,27 +2576,19 @@ function askText(text, initial){
 }
 
 // =====================================================================  Schedule tab
-let SCH=null, schDirty=false, schLoaded=false;
+let schLoaded=false;
 
 async function loadSchedule(force){
   try{
     const {ok,j}=await api("api/settings");
     if(!ok) throw 0;
-    document.getElementById("schArmNote").textContent = j.armed?"":t("sch_not_armed");
-    renderSchStatus(j.schedule);
-    if(force || !schDirty){ SCH=j.settings.schedule; schDirty=false; fillSchedule(); }
     if(j.settings.auto_reset && (force || !arDirty)) fillAutoReset(j.settings.auto_reset);
     renderAutoReset(j.auto_reset);
-    if(j.settings.vvb && (force || !vvDirty)) fillVvb(j.settings.vvb);
-    renderVvb(j.vvb);
     if(j.settings.warm && (force || !wmDirty)) fillWarm(j.settings.warm);
     renderWarm(j.warm);
-    renderWxAsh(j.settings, force);
     document.getElementById("luxField").value = j.settings.flame_field||"";
     schLoaded=true;
   }catch(e){
-    document.getElementById("schArmNote").textContent=t("sch_no_server");
-    document.getElementById("schStatus").textContent="—";
   }
 }
 // ---- server messages in the selected language (server sends code/kind + numbers; English text = fallback) ----
@@ -2652,118 +2714,6 @@ async function saveWarm(){
   }catch(e){ m.textContent=t("sch_no_server"); m.className="savemsg bad"; }
 }
 
-// ---- outside temperature + ash bin size (same settings as on the new page) ----
-let WXR=[], abDirty=false;
-function wxMsgSet(txt,ok){ const m=document.getElementById("wxMsg"); m.textContent=txt; m.className="savemsg "+(ok?"ok":"bad"); }
-async function renderWxAsh(st, force){
-  const w=st.weather||{}, a=st.ash||{};
-  let live={}; try{ const r=await fetch("status.json?since=1e12",{cache:"no-store"}); live=((await r.json()).weather)||{}; }catch(e){}
-  const el=document.getElementById("wxStatus");
-  if(!w.enabled) el.innerHTML=`<span style="color:var(--dim)">${esc(t("wx_offtxt"))}</span>`;
-  else if(live.c!=null&&live.age_min!=null&&live.age_min<=180) el.innerHTML=`<b style="color:var(--ok)">${esc(t("wx_now",{c:fmt(live.c,1),n:w.name||""}))}</b>`;
-  else if(live.age_min!=null) el.textContent=t("wx_old",{n:w.name||"",m:live.age_min});
-  else el.textContent=t("wx_wait",{n:w.name||""});
-  document.getElementById("wxOff").style.display=w.enabled?"":"none";
-  if(force||!abDirty) document.getElementById("abSize").value=a.bin_kg?String(a.bin_kg).replace(".",LANG==="da"?",":"."):"";   // text, so Danish shows a comma
-  document.getElementById("abStatus").textContent=a.bin_kg?t("ab_set",{kg:fmt(a.bin_kg,1)}):t("ab_none");
-}
-async function wxFindClassic(){
-  const q=document.getElementById("wxQ").value.trim(); if(q.length<2) return;
-  try{ const {j}=await api("api/weather/find?q="+encodeURIComponent(q)+"&lang="+LANG); WXR=j.places||[];
-    if(!j.ok){ wxMsgSet(t("wx_err"),false); return; }
-    if(!WXR.length){ wxMsgSet(t("wx_none"),false); document.getElementById("wxPickL").style.display="none"; return; }
-    wxMsgSet("",true);
-    document.getElementById("wxSel").innerHTML=WXR.map((p,i)=>`<option value="${i}">${esc(p.name+" - "+(p.area||""))}</option>`).join("");
-    document.getElementById("wxPickL").style.display=""; }
-  catch(e){ wxMsgSet(t("wx_err"),false); }
-}
-
-// ---- hot-water tank sensor card ----
-let VV=null, vvDirty=false;
-function fillVvb(cfg){
-  VV=JSON.parse(JSON.stringify(cfg)); vvDirty=false;
-  document.getElementById("vvEnabled").checked=!!VV.enabled;
-  document.getElementById("vvFs").disabled=!VV.enabled;
-  document.getElementById("vvSource").value=VV.source;
-  document.getElementById("vvAge").value=VV.max_age_min; document.getElementById("vvSafe").value=VV.safe_c;
-  vvHow();
-}
-function vvHow(){
-  document.querySelectorAll("#vvSource option").forEach(o=>o.textContent=t("vv_src_"+o.value));
-  document.getElementById("vvHow").textContent=t("vv_how_"+document.getElementById("vvSource").value);
-}
-function renderVvb(f){
-  const el=document.getElementById("vvStatus"); if(!el) return;
-  if(!f||!f.enabled){ el.innerHTML=`<span style="color:var(--dim)">${esc(t("vv_off"))}</span>`; return; }
-  if(f.fresh) el.innerHTML=`<b style="color:var(--ok)">${esc(t("vv_ok",{c:fmt(f.c,1),s:f.age_s}))}</b>`;
-  else el.innerHTML=`<b style="color:var(--warn)">${esc(t(f.c==null?"vv_none":"vv_stale",{safe:f.safe_c,m:Math.round((f.age_s||0)/60)}))}</b>`;
-}
-async function saveVvb(){
-  VV.enabled=document.getElementById("vvEnabled").checked; VV.source=document.getElementById("vvSource").value;
-  const m=document.getElementById("vvMsg"), nv={max_age_min:numF("vvAge"),safe_c:numF("vvSafe")};
-  if(!allNum(nv)){ m.textContent=t("num_bad"); m.className="savemsg bad"; return; }
-  Object.assign(VV,nv);
-  try{
-    const {ok,j}=await api("api/settings",{vvb:{enabled:VV.enabled,source:VV.source,max_age_min:VV.max_age_min,safe_c:VV.safe_c}});
-    m.textContent=ok?"✓ "+t("sch_saved"):(j.msg||t("vv_err")); m.className="savemsg "+(ok?"ok":"bad");
-    if(ok){ vvDirty=false; loadSchedule(true); }
-  }catch(e){ m.textContent=t("sch_no_server"); m.className="savemsg bad"; }
-}
-
-function renderSchStatus(f){
-  const el=document.getElementById("schStatus"); if(!el) return;
-  if(!f||!f.status){ el.textContent="—"; return; }
-  const c=f.status.code;
-  // the server's detail text only where it adds numbers/reasons
-  const detail=["cooldown","pending","max_starts","blocked","running"].includes(c)?" · "+esc(detailText("sd_",f.status)):"";
-  el.innerHTML=`<b style="color:${c==="running"?"var(--ok)":(["alarm","blocked"].includes(c)?"var(--warn)":"var(--dim)")}">${esc(t("st_"+c))}</b>`+
-    detail+` · ${esc(t("starts_today",{n:f.starts_today}))}`;
-}
-function fillSchedule(){
-  if(!SCH) return;
-  document.getElementById("schEnabled").checked=!!SCH.enabled;
-  document.getElementById("schFs").disabled=!SCH.enabled;
-  const v=(id,x)=>document.getElementById(id).value=x;
-  v("schMinOff",SCH.min_off_min); v("schMaxSt",SCH.max_starts_day); v("schShort",SCH.short_run_min);
-  v("schAtt",SCH.max_attempts); v("schWait",SCH.retry_wait_s);
-  document.getElementById("schOverride").checked=!!SCH.override_waiting;
-  renderWins();
-}
-function renderWins(){
-  const el=document.getElementById("schWins"), D=t("days");
-  el.innerHTML = SCH.windows.length? SCH.windows.map((w,i)=>
-    `<div class="win" data-i="${i}">
-      <label class="chk" style="display:flex;gap:5px;align-items:center"><input type="checkbox" data-k="on" ${w.on?"checked":""}>${esc(t("sch_on"))}</label>
-      <span class="days">${D.map((d,k)=>`<button type="button" data-day="${k}" class="${w.days.includes(k)?"on":""}">${d}</button>`).join("")}</span>
-      <input type="time" data-k="start" value="${w.start}"> – <input type="time" data-k="end" value="${w.end}">
-      <button type="button" class="x danger" data-del="1" title="${t("del_title")}">${t("del")||"✕"}</button>
-    </div>`).join("") : `<div class="note">—</div>`;
-  el.querySelectorAll(".win").forEach(row=>{
-    const w=SCH.windows[+row.dataset.i];
-    row.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{
-      const d=+b.dataset.day; w.days = w.days.includes(d)? w.days.filter(x=>x!==d) : [...w.days,d].sort();
-      schDirty=true; renderWins();});
-    row.querySelector("[data-k=on]").onchange=e=>{w.on=e.target.checked; schDirty=true;};
-    row.querySelector("[data-k=start]").onchange=e=>{w.start=e.target.value; schDirty=true;};
-    row.querySelector("[data-k=end]").onchange=e=>{w.end=e.target.value; schDirty=true;};
-    row.querySelector("[data-del]").onclick=()=>{SCH.windows.splice(+row.dataset.i,1); schDirty=true; renderWins();};
-  });
-  document.getElementById("schAdd").disabled = SCH.windows.length>=24;
-}
-function schMsg(txt,cls){ const m=document.getElementById("schMsg"); m.textContent=txt; m.className="savemsg "+(cls||""); }
-async function saveSchedule(){
-  const n=numF, nv={min_off_min:n("schMinOff"),max_starts_day:n("schMaxSt"),short_run_min:n("schShort"),
-    max_attempts:n("schAtt"),retry_wait_s:n("schWait")};
-  if(!allNum(nv)){ schMsg(t("num_bad"),"bad"); return; }
-  SCH.enabled=document.getElementById("schEnabled").checked;
-  Object.assign(SCH,nv,{override_waiting:document.getElementById("schOverride").checked});
-  try{
-    const {ok,j}=await api("api/settings",{schedule:SCH});
-    if(ok){ schDirty=false; schMsg("✓ "+t("sch_saved"),"ok"); loadSchedule(true); }
-    else schMsg(j.msg||t("save_failed"),"bad");
-  }catch(e){ schMsg(t("sch_no_server"),"bad"); }
-}
-
 // =====================================================================  Discoveries tab (auto-generated)
 let DISC=null;
 async function loadDiscoveries(){
@@ -2885,6 +2835,7 @@ function renderOpt(r){
     // text in the selected language from key + numbers; the server's English text is only a fallback
     let title=s.title, text=s.text;
     if(s.key==="alarm" && s.p){ title=t("sg_alarm_t",{a:s.p.a,name:ALARM[s.p.a]||"",n:s.p.n}); text=alarmHint(s.p.a)||text; }
+    else if(s.key==="rescues" && s.p){ title=bhT("bh_rescue"); text=rescText(s.p); }
     else if(s.key && (I18N[LANG]||{})["sg_"+s.key+"_t"]!=null){ title=t("sg_"+s.key+"_t",s.p); text=t("sg_"+s.key+"_s",s.p); }
     return `<div class="row ${cls}"><div class="ic">${ic}</div><div class="tx"><b>${esc(title)}</b><span>${esc(text)}</span></div></div>`;
   }).join("") || `<div class="note">${t((r.days||[]).length?"sg_none":"opt_none")}</div>`;
@@ -2907,27 +2858,12 @@ function renderOpt(r){
 }
 // the boiler's own settings changes (newest first), seen by the monitor's settings reads
 let CC=null;
-const CC_NAMES={en:{"000":"Set point (°C)","001":"Fuel (g per hour)","002":"Air clean interval (min)","003":"Air clean time (s)",
-  "004":"Ash clean interval (g)","005":"Minimum mode stop at (%)","006":"Minimum mode pause (h)","007":"Boost 1","008":"Boost 2",
-  "009":"Auger calibration (g)","010":"Silo capacity (kg)","012":"Stepping temp. limit (°C)","013":"Pump start temperature",
-  "014":"Start fuel (s)","015":"Ignition air (%)","016":"Warm-up (s)","017":"Ignition timeout (s)","018":"Max doses",
-  "019":"Top-up dose (s)","020":"Top-up interval (s)","031":"Max power (%)","033":"Boiler type","034":"Dose size",
-  "035":"PID P","036":"PID I","037":"PID D","038":"Software version","041":"Hardware version"},
- da:{"000":"Kedeltemperatur (°C)","001":"Brændsel (g pr. time)","002":"Luftrens interval (min)","003":"Luftrens sugetid (s)",
-  "004":"Askerens interval (g)","005":"Minimumdrift stop ved (%)","006":"Minimumdrift pause (t)","007":"Boost 1","008":"Boost 2",
-  "009":"Snegl afvejning (g)","010":"Silo kapacitet (kg)","012":"Stepping temp. grænse (°C)","013":"Pumpe starttemperatur",
-  "014":"Tændbrændsel (s)","015":"Tænd luft (%)","016":"Opvarmning (s)","017":"Optænding timeout (s)","018":"Max doser",
-  "019":"Suplering (s)","020":"Interval mellem doser (s)","031":"Max ydelse (%)","033":"Kedeltype","034":"Dosis str.",
-  "035":"PID P","036":"PID I","037":"PID D","038":"Softwareversion","041":"Hardwareversion"}};
-const ccName=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(n) return n+" ("+f+")";
-  const k=+f; return k>=21&&k<=30?t("cc_fan",{p:(k-20)*10})+" ("+f+")":t("cc_field",{f:f}); };
 function renderCfgChanges(){
   const el=document.getElementById("ccList"); if(!el) return;
   const rows=(CC||[]).slice(-10).reverse();
   if(!rows.length){ el.innerHTML='<div class="note" style="margin:0">'+esc(t("cc_none"))+'</div>'; return; }
   const when=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"})+" "+clock(ep);
-  const v=x=>typeof x==="number"?fmt(x,Number.isInteger(x)?0:(Math.abs(x)<1?3:1)):String(x);
-  el.innerHTML='<table class="tbl">'+rows.map(r=>`<tr><td style="white-space:nowrap">${esc(when(r.time))}</td><td>${esc(t("cc_row",{n:ccName(r.field),a:v(r.old),b:v(r.new)}))}</td></tr>`).join("")+'</table>';
+  el.innerHTML='<table class="tbl">'+rows.map(r=>`<tr><td style="white-space:nowrap">${esc(when(r.time))}</td><td>${esc(t("cc_row",{n:ccName(r.field),a:ccNum(r.old),b:ccNum(r.new)}))}</td></tr>`).join("")+'</table>';
 }
 // ash plate: seconds per timed turn over time (dots), usual value (dashed), boiler's give-up limit (15 s)
 let ASH=null;
@@ -3096,7 +3032,7 @@ function renderIgnitions(r){
   const H=["th_when","th_result","started_by","th_min","th_boiler0","th_off","th_feed","th_rpm","th_peak","th_batch"];
   document.getElementById("igTable").innerHTML=`<tr>${H.map(h=>`<th>${t(h)}</th>`).join("")}</tr>`+
     recs.slice(-15).reverse().map(x=>`<tr><td>${dmy(x.epoch)}</td>`+
-      `<td style="color:${x.result==="ok"?"var(--ok)":(x.result==="failed"?"var(--bad)":"var(--dim)")}">${esc(t("ig_"+x.result))}${x.alarm?" ("+x.alarm+")":""}</td><td>${esc(srcText(x))}</td>`+
+      `<td style="color:${x.resumed?"var(--dim)":x.result==="ok"?"var(--ok)":(x.result==="failed"?"var(--bad)":"var(--dim)")}">${esc(t("ig_"+(x.resumed?"resumed":x.result)))}${x.alarm?" ("+x.alarm+")":""}</td><td>${esc(srcText(x))}</td>`+
       `<td>${fmt(x.minutes,1)}</td><td>${fmt(x.boiler,1)}</td><td>${fmt(x.off_h,1)}</td><td>${x.auger_s??"—"}</td>`+
       `<td>${x.rpm_min!=null?x.rpm_min+"–"+x.rpm_max:"—"}</td><td>${fmt(x.peak_lux,0)}</td><td>${esc(x.batch)}</td></tr>`).join("");
   const S=r.by_settings||[];
@@ -3108,9 +3044,9 @@ function renderIgnitions(r){
     let out=String(txt||"");
     M.forEach(([k,lbl,u])=>{ out=out.replace(new RegExp(k.replace(/[.%]/g,"\\$&")+"\\s+([0-9.,]+)","g"),(m,v)=>lbl+" "+v+(u?" "+u:"")); });
     return out; }
-  document.getElementById("igSettings").innerHTML=`<tr><th>${t("th_set")}</th><th>${t("th_tries")}</th><th>${t("th_okn")}</th><th>${t("th_med")}</th></tr>`+
-    (S.length?S.map(s=>`<tr><td>${esc(igSetTxt(s.settings))}</td><td>${s.n}</td><td>${s.ok}</td><td>${fmt(s.median_min,1)}</td></tr>`).join("")
-     :`<tr><td colspan="4" class="note">—</td></tr>`);
+  document.getElementById("igSettings").innerHTML=`<tr><th>${t("th_set")}</th><th>${t("th_tries")}</th><th>${t("th_okn")}</th><th>${t("th_medf")}</th><th>${t("th_med")}</th></tr>`+
+    (S.length?S.map(s=>`<tr><td>${esc(igSetTxt(s.settings))}${s.now?` <b style="color:var(--ok)">● ${esc(t("th_now"))}</b>`:""}</td><td>${s.n}</td><td>${s.ok}</td><td>${fmt(s.flame_min,1)}</td><td>${fmt(s.median_min,1)}</td></tr>`).join("")
+     :`<tr><td colspan="5" class="note">—</td></tr>`);
 }
 
 function renderFan(r){
@@ -3137,46 +3073,18 @@ function start(){
     resetBuffers(); poll();};   // clear history on toggle so demo & live data never mix
   document.querySelectorAll("#langSel button").forEach(b=>b.onclick=()=>setLang(b.dataset.l));
   document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-  // schedule tab
-  document.getElementById("schEnabled").onchange=e=>{ if(SCH){ SCH.enabled=e.target.checked; schDirty=true; }
-    document.getElementById("schFs").disabled=!e.target.checked; };
-  document.getElementById("schSave").onclick=()=>{ if(SCH) saveSchedule(); };
   document.getElementById("arEnabled").onchange=async e=>{
     if(e.target.checked && !(await askConfirm(t("ar_confirm")))) e.target.checked=false;
     if(AR){ AR.enabled=e.target.checked; arDirty=true; }
     document.getElementById("arFs").disabled=!e.target.checked; };
   document.getElementById("arSave").onclick=()=>{ if(AR) saveAutoReset(); };
   ["arWait","arMax"].forEach(id=>document.getElementById(id).oninput=()=>arDirty=true);
-  document.getElementById("vvEnabled").onchange=async e=>{
-    if(e.target.checked && !(await askConfirm(t("vv_confirm")))) e.target.checked=false;
-    vvDirty=true; document.getElementById("vvFs").disabled=!e.target.checked; };
-  document.getElementById("vvSave").onclick=()=>{ if(VV) saveVvb(); };
   document.getElementById("wmEnabled").onchange=async e=>{
     if(e.target.checked && !(await askConfirm(t("wm_confirm")))) e.target.checked=false;
     wmDirty=true; wmShowValues(LASTWM); };
   document.getElementById("wmBoard").onchange=()=>{ wmDirty=true; wmShowValues(LASTWM); };
   ["wmStop","wmAfter","wmPause","wmBoosts","wmMinC","wmRestart","wmPump"].forEach(id=>document.getElementById(id).oninput=()=>{wmDirty=true; if(id==="wmAfter") wmHelp(); if(id==="wmMinC") wmMinCUnit();});
-  // outside temperature + ash bin size
-  document.getElementById("wxFind").onclick=wxFindClassic;
-  document.getElementById("wxQ").onkeydown=e=>{ if(e.key==="Enter") wxFindClassic(); };
-  document.getElementById("wxUse").onclick=async()=>{ const o=WXR[+document.getElementById("wxSel").value]; if(!o) return;
-    const {ok,j}=await api("api/settings",{weather:{enabled:true,name:o.name,cc:o.cc||"",lat:o.lat,lon:o.lon}});
-    wxMsgSet(ok?"✓ "+t("sch_saved"):(j.msg||t("save_failed")),ok); document.getElementById("wxPickL").style.display="none"; loadSchedule(true); setTimeout(()=>loadSchedule(true),8000); };
-  document.getElementById("wxOff").onclick=async()=>{ const {ok}=await api("api/settings",{weather:{enabled:false}}); wxMsgSet(ok?"✓ "+t("sch_saved"):t("save_failed"),ok); loadSchedule(true); };
-  document.getElementById("abSize").oninput=()=>abDirty=true;
-  document.getElementById("abSave").onclick=async()=>{ const s=document.getElementById("abSize").value.trim(), v=s===""?0:numTyped(s), m=document.getElementById("abMsg");   // empty = no bin size
-    if(!isFinite(v)){ m.textContent=t("num_bad"); m.className="savemsg bad"; return; }
-    const {ok,j}=await api("api/settings",{ash:{bin_kg:v}});
-    m.textContent=ok?"✓ "+t("sch_saved"):(j.msg||t("save_failed")); m.className="savemsg "+(ok?"ok":"bad"); if(ok){ abDirty=false; loadSchedule(true); } };
   document.getElementById("wmSave").onclick=()=>{ if(WM) saveWarm(); };
-  document.getElementById("vvSource").onchange=()=>{ vvDirty=true; vvHow(); };
-  ["vvAge","vvSafe"].forEach(id=>document.getElementById(id).oninput=()=>vvDirty=true);
-  document.getElementById("schAdd").onclick=()=>{ if(!SCH||SCH.windows.length>=24) return;
-    SCH.windows.push({on:true,days:[0,1,2,3,4,5,6],start:"05:00",end:"07:00"}); schDirty=true; renderWins(); };
-  document.getElementById("schOverride").onchange=async e=>{
-    schDirty=true;
-    if(e.target.checked){ e.target.checked = await askConfirm(t("sch_override_confirm")); } };
-  ["schMinOff","schMaxSt","schShort","schAtt","schWait"].forEach(id=>document.getElementById(id).oninput=()=>schDirty=true);
   // optimiser tab
   document.getElementById("luxField").onchange=async e=>{
     await api("api/settings",{flame_field:e.target.value||null}).catch(()=>{}); loadOptimiser(); };

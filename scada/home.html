@@ -328,7 +328,11 @@ html.fx-hid .fire *{animation-play-state:paused!important}
 .hc>div:first-child{border-top:0}.hc i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:13px}
 .hc i.ok{background:var(--okSoft);color:var(--ok)}.hc i.bad{background:var(--amberSoft);color:var(--amberText)}.hc i.learn{background:var(--grid);color:var(--ink3)}
 .hc b{font-weight:600;display:block}.hc span{color:var(--ink2);font-size:14px;line-height:1.4}.hc em{font-style:normal;color:var(--ink3);font-size:13px;white-space:nowrap;padding-top:2px}
-@media (max-width:640px){.hc>div{grid-template-columns:28px 1fr}.hc em{grid-column:2;padding-top:0}}
+.hc>details>summary,.hc>a{display:grid;grid-template-columns:28px 1fr auto;gap:4px 12px;align-items:start;padding:11px 0;border-top:1px solid var(--grid);cursor:pointer;list-style:none;color:inherit;text-decoration:none}
+.hc>details>summary::-webkit-details-marker{display:none}.hc>*:first-child>summary,.hc>a:first-child{border-top:0}
+.hc .cv{display:inline-block;margin-left:6px;font-size:15px;color:var(--ink2);transition:transform .15s}.hc>details[open]>summary .cv{transform:rotate(180deg)}
+.hcb{padding:0 0 14px 40px;font-size:14.5px;line-height:1.45;color:var(--ink)}.hcb p{margin:0}.hcb b{display:inline}
+@media (max-width:640px){.hc>div,.hc>details>summary,.hc>a{grid-template-columns:28px 1fr}.hc em{grid-column:2;padding-top:0}.hcb{padding-left:0}}
 .hline{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 16px;border-radius:14px;background:var(--amberSoft);color:var(--amberText);font-weight:600;text-decoration:none}
 .hline:hover{text-decoration:underline}
 .grid3{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:20px;margin-top:20px}
@@ -701,12 +705,19 @@ const lhBoiler=h=>lhT("boiler",{m:h.type!=null?LH_KW[h.type]:lhT("type_none"),v:
 // the inside of the card. c = the page's colours {warn, dim, line}, guide = the link to the guide section
 function lhHTML(h,c,guide){
   if(!h) return "";
-  const bad=lhBad(h), rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
+  const bad=lhBad(h);
+  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b id="lhTitle">${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
+    ${lhBody(h,c,guide)}</details>`;
+}
+// the inside of the card without its fold: the settings table, what to try, Copy lighting report (also used inside the
+// Time to flame row of Burner health on /home)
+function lhBody(h,c,guide){
+  if(!h) return "";
+  const rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
   const notes=[...new Set(rows.filter(r=>r.mark&&r.mark!=="diff"&&r.mark!=="unused").map(r=>r.mark))];
   const nm=r=>esc(lhT("n_"+r.id))+(r.mark==="unused"?` <span style="color:${c.dim}">(${esc(lhT("m_unused"))})</span>`:"");
   const mk=r=>!r.mark||r.mark==="unused"?"":r.mark==="diff"?` <span title="${esc(lhT("m_diff"))}" style="color:${c.dim}">●</span>`:` <b style="color:${c.warn}">!</b>`;
-  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b>${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
-    <p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
+  return `<p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
     ${any?`<div style="overflow-x:auto"><table id="lhTable" style="width:100%;border-collapse:collapse;font-size:14px"><tr>${["c_set","c_now","c_fac","c_ref"].map(k=>`<th style="${td};color:${c.dim};font-weight:600">${esc(lhT(k))}</th>`).join("")}</tr>
       ${rows.map(r=>`<tr data-id="${esc(r.id)}"${r.mark?` data-mark="${esc(r.mark)}"`:""}><td style="${td}">${nm(r)}</td><td style="${td};white-space:nowrap"><b>${esc(lhVal(r.id,r.now))}</b>${mk(r)}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.fac))}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.ref))}</td></tr>`).join("")}</table></div>
     ${notes.map(m=>`<p style="margin:8px 0 0;color:${c.warn}"><b>!</b> ${esc(lhT("m_"+m))}</p>`).join("")}
@@ -717,7 +728,7 @@ function lhHTML(h,c,guide){
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px"><button type="button" class="btn sec" data-lh="copy">${esc(lhT("copy"))}</button>
       <a class="link" href="${esc(guide)}" target="_blank" rel="noopener">${esc(lhT("guide"))}</a></div>
     <p id="lhCopyNote" style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(lhT("copy_note"))}</p>
-    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p></details>`;
+    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p>`;
 }
 // the plain text for the clipboard: boiler type, software, settings, the last starts, the monitor's version.
 // Nothing personal: no names, addresses, topics, place or pellet batch names.
@@ -744,6 +755,152 @@ function lhCopy(txt,btn){
   document.body.appendChild(ta); ta.select(); try{ if(document.execCommand("copy")) done(); }catch(e){} ta.remove();
 }
 document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="lhDet") LH_OPEN=e.target.open; },true);
+
+// ---- Burner health details: what the rows of the Burner health checklist open (/home History) and the fire
+// rescue words of the /classic suggestions. READ ONLY: the server sends codes, numbers and times; the words are here.
+const BH_TXT={
+ en:{bh_rescue:"Fire rescues", bh_rescue_none:"None in the last {d} days that burned.",
+  bh_rescue_one:"1 in the last {d} days that burned. The boiler relit it.", bh_rescue_many:"{a} in the last {d} days that burned.",
+  bh_rescue_fail:"{f} of {a} in the last {d} days that burned did not relight.",
+  rs_one:"Fire rescue on {w}: the flame went out while burning, and {o}.",
+  rs_many:"{n} fire rescues in the last {d} days that burned (since {from}). The flame went out while burning. The last ones:",
+  rs_ok:"the boiler relit it", rs_failed:"it did not relight: the boiler stopped with an alarm", rs_stopped:"the boiler stopped",
+  rs_null:"the day ended before it was over", rs_when_none:"time not saved",
+  rs_advice:"Check the pellet feed (silo, pellets stuck, auger) and clean the flame sensor.",
+  rs_period:"“The last {d} days that burned” = the days of this list that had burning; days without burning are skipped.",
+  rs_list_h:"The newest fire rescues", rs_none:"No fire rescues in the saved days.",
+  st_h:"The last {n} starts", st_none:"No starts recorded yet.", st_by:"started by {s}", st_flame:"flame after {a} min",
+  st_full:"full heat after {a} min", st_off:"off {a} h before", st_r_ok:"Lit", st_r_failed:"Did not light", st_r_stopped:"Stopped",
+  st_r_resumed:"Went on burning", st_r_relight:"Relit after a pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Went on burning = the fire was still there, so there was no lighting. It is left out of every average.",
+  st_cfg_h:"Lighting settings compared", st_cfg_n:"{n} starts, {ok} lit", st_cfg_flame:"to flame about {a} min",
+  st_cfg_full:"to full heat about {a} min", st_cfg_now:"In force now", st_cfg_none:"The settings were the same for every start.",
+  st_cfg_note:"Only the settings that differ between starts. Typical = the middle value of the starts that lit.",
+  fs_h:"Is the flame sensor dirty?", fs_band_low:"Low power (under 45 %)", fs_band_mid:"Middle power (45–70 %)", fs_band_high:"High power (70 % and up)",
+  fs_learn:"Learning: {m} of {nm} min steady burning, {b} of {nb} burns.", fs_none:"No steady burning at this power yet.",
+  fs_ready:"Usual {a}, now {c}.", fs_drop:"{p} % less light than usual.", fs_same:"As usual.",
+  fs_how:"It learns from steady burning: 5-minute stretches at an even power, from 10 minutes into a burn. A power level is ready after {nm} minutes spread over {nb} burns, so short burns add up. Readings from the saved history count too.",
+  fs_clean:"I cleaned the flame sensor", fs_clean_q:"Start learning the flame sensor’s normal level again from now?",
+  fs_cleaned:"Learning again since {d}.", fs_nofield:"No flame reading is chosen (classic page → Analysis).",
+  cc_fan:"Fan at {p} %", cc_field:"Setting {f}"},
+ da:{bh_rescue:"Redder ilden", bh_rescue_none:"Ingen i de seneste {d} dage med fyring.",
+  bh_rescue_one:"1 i de seneste {d} dage med fyring. Kedlen tændte igen.", bh_rescue_many:"{a} i de seneste {d} dage med fyring.",
+  bh_rescue_fail:"{f} af {a} i de seneste {d} dage med fyring tændte ikke igen.",
+  rs_one:"Redder ilden {w}: flammen gik ud under fyring, og {o}.",
+  rs_many:"Redder ilden {n} gange i de seneste {d} dage med fyring (siden {from}). Flammen gik ud under fyring. De seneste:",
+  rs_ok:"kedlen tændte den igen", rs_failed:"den tændte ikke igen: kedlen stoppede med en alarm", rs_stopped:"kedlen stoppede",
+  rs_null:"dagen sluttede, før den var ovre", rs_when_none:"tidspunkt ikke gemt",
+  rs_advice:"Tjek pilletilførslen (silo, piller der hænger fast, snegl) og rens flammeføleren.",
+  rs_period:"“De seneste {d} dage med fyring” = de dage på listen, hvor der blev fyret; dage uden fyring springes over.",
+  rs_list_h:"De nyeste gange", rs_none:"Ingen gange i de gemte dage.",
+  st_h:"De seneste {n} starter", st_none:"Ingen starter registreret endnu.", st_by:"startet af {s}", st_flame:"flamme efter {a} min",
+  st_full:"fuld varme efter {a} min", st_off:"slukket {a} t før", st_r_ok:"Tændte", st_r_failed:"Tændte ikke", st_r_stopped:"Stoppet",
+  st_r_resumed:"Brændte videre", st_r_relight:"Tændt igen efter pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Brændte videre = ilden var der stadig, så der var ingen optænding. Den tælles ikke med i gennemsnit.",
+  st_cfg_h:"Indstillinger for optænding sammenlignet", st_cfg_n:"{n} starter, {ok} tændte", st_cfg_flame:"til flamme ca. {a} min",
+  st_cfg_full:"til fuld varme ca. {a} min", st_cfg_now:"Gælder nu", st_cfg_none:"Indstillingerne var de samme ved alle starter.",
+  st_cfg_note:"Kun de indstillinger, der er forskellige fra start til start. Typisk = midterværdien af de starter, der tændte.",
+  fs_h:"Er flammeføleren snavset?", fs_band_low:"Lav ydelse (under 45 %)", fs_band_mid:"Mellem ydelse (45–70 %)", fs_band_high:"Høj ydelse (70 % og op)",
+  fs_learn:"Lærer: {m} af {nm} min stabil fyring, {b} af {nb} fyringer.", fs_none:"Ingen stabil fyring ved denne ydelse endnu.",
+  fs_ready:"Normalt {a}, nu {c}.", fs_drop:"{p} % mindre lys end normalt.", fs_same:"Som normalt.",
+  fs_how:"Den lærer af stabil fyring: 5 minutter ad gangen ved jævn ydelse, fra 10 minutter inde i en fyring. Et ydelsesniveau er klar efter {nm} minutter fordelt på {nb} fyringer, så korte fyringer lægges sammen. Målinger fra den gemte historik tæller også med.",
+  fs_clean:"Jeg har renset flammeføleren", fs_clean_q:"Lær flammefølerens normale niveau igen fra nu?",
+  fs_cleaned:"Lærer igen siden {d}.", fs_nofield:"Der er ikke valgt en flammemåling (klassisk side → Analyse).",
+  cc_fan:"Røgsuger ved {p} %", cc_field:"Indstilling {f}"}};
+const bhT=(k,p)=>{ let s=(BH_TXT[LANG]||BH_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
+// "Tue 24 Nov 13:42" (Danish: "tirs. 24. nov. 13:42")
+const bhWhen=ep=>ep?new Date(ep*1000).toLocaleDateString(LOC(),{weekday:"short",day:"numeric",month:"short"})+" "+clock(ep):bhT("rs_when_none");
+// the boiler's own settings in plain words (EN/DA): the settings changes and the lighting settings compared
+const CC_NAMES={en:{"000":"Set point (°C)","001":"Fuel (g per hour)","002":"Air clean interval (min)","003":"Air clean time (s)",
+  "004":"Ash clean interval (g)","005":"Minimum mode stop at (%)","006":"Minimum mode pause (h)","007":"Boost 1","008":"Boost 2",
+  "009":"Auger calibration (g)","010":"Silo capacity (kg)","012":"Stepping temp. limit (°C)","013":"Pump start temperature",
+  "014":"Start fuel (s)","015":"Ignition air (%)","016":"Warm-up (s)","017":"Ignition timeout (s)","018":"Max doses",
+  "019":"Top-up dose (s)","020":"Top-up interval (s)","031":"Max power (%)","033":"Boiler type","034":"Dose size",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Software version","041":"Hardware version"},
+ da:{"000":"Kedeltemperatur (°C)","001":"Brændsel (g pr. time)","002":"Luftrens interval (min)","003":"Luftrens sugetid (s)",
+  "004":"Askerens interval (g)","005":"Minimumdrift stop ved (%)","006":"Minimumdrift pause (t)","007":"Boost 1","008":"Boost 2",
+  "009":"Snegl afvejning (g)","010":"Silo kapacitet (kg)","012":"Stepping temp. grænse (°C)","013":"Pumpe starttemperatur",
+  "014":"Tændbrændsel (s)","015":"Tænd luft (%)","016":"Opvarmning (s)","017":"Optænding timeout (s)","018":"Max doser",
+  "019":"Suplering (s)","020":"Interval mellem doser (s)","031":"Max ydelse (%)","033":"Kedeltype","034":"Dosis str.",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Softwareversion","041":"Hardwareversion"}};
+const ccName=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(n) return n+" ("+f+")";
+  const k=+f; return k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10})+" ("+f+")":bhT("cc_field",{f:f}); };
+// name and unit apart: "Start fuel (s)" -> ["Start fuel","s"]
+const ccParts=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(!n){ const k=+f; return [k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10}):bhT("cc_field",{f:f}),k>=21&&k<=30?"rpm":""]; }
+  const m=n.match(/^(.*?)\s*\(([^)]*)\)$/); return m?[m[1],m[2]]:[n,""]; };
+const ccNum=x=>typeof x==="number"?fmt(x,Number.isInteger(x)?0:(Math.abs(x)<1?3:1)):String(x==null?"–":x);
+// one settings change as "Start fuel 60 → 40 s"
+const ccChange=r=>{ const [n,u]=ccParts(r.field); return n+" "+ccNum(r.old)+" → "+ccNum(r.new)+(u?" "+u:""); };
+
+// ---- fire rescues: [[epoch, "ok" / "failed" / "stopped" / null], ...] newest first
+const rsOutcome=o=>bhT("rs_"+(o||"null"));
+// the /classic suggestion and the /home detail: when, and whether the boiler relit it. p = the server's numbers
+// (n, days, from, last, ok), "this period" said in words
+function rescText(p){
+  const last=(p&&p.last)||[], n=(p&&p.n)||0;
+  if(n===1&&last.length) return bhT("rs_one",{w:bhWhen(last[0][0]),o:rsOutcome(last[0][1])})+" "+bhT("rs_advice");
+  const from=p&&p.from?new Date(p.from+"T12:00").toLocaleDateString(LOC(),{day:"numeric",month:"short"}):"—";
+  return bhT("rs_many",{n,d:(p&&p.days)||"?",from})+" "+last.map(x=>bhWhen(x[0])+" ("+rsOutcome(x[1])+")").join("; ")+". "+bhT("rs_advice");
+}
+// the list of times for the Burner health detail. c = the page's colours {warn, dim, line}
+function rescListHTML(p,c){
+  const L=(p&&p.list)||[];
+  if(!L.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("rs_none"))}</p>`;
+  return `<p style="margin:0 0 6px"><b>${esc(bhT("rs_list_h"))}</b></p><div id="rsList">${L.map(x=>`<div style="padding:7px 0;border-top:1px solid ${c.line}">
+    <b style="font-weight:600">${esc(bhWhen(x[0]))}</b><br><span style="color:${x[1]==="ok"?c.dim:c.warn}">${esc(sentenceCase(rsOutcome(x[1])))}</span></div>`).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("rs_advice"))} ${esc(bhT("rs_period",{d:p.d||0}))}</p>`;
+}
+const sentenceCase=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+
+// ---- the last starts with the settings changes between them, and the lighting settings compared (api/ignitions:
+// records, by_settings, cfg_changes). Stacked rows, so it fits a phone. by = the page's "started by" words for a record.
+function startsHTML(ign,c,by,n){
+  n=n||10;
+  const recs=((ign&&ign.records)||[]).slice(-n).reverse(), ch=((ign&&ign.cfg_changes)||[]).slice();
+  if(!recs.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("st_none"))}</p>`;
+  const mark=rows=>{ const t0=rows[0].time; return `<div class="stMark" style="padding:6px 0;border-top:1px solid ${c.line};color:${c.warn};font-size:14px">▲ ${esc(bhWhen(t0))} ${esc(rows.map(ccChange).join(", "))}</div>`; };
+  // the changes after the newest start go first, then between each start and the one before it
+  const take=(a,b)=>{ const got=ch.filter(r=>r.time>=a&&r.time<b); if(!got.length) return "";
+    const g={}; got.forEach(r=>{ const k=Math.round(r.time/60); (g[k]=g[k]||[]).push(r); });
+    return Object.keys(g).sort((x,y)=>y-x).map(k=>mark(g[k])).join(""); };
+  let h=`<p style="margin:0 0 4px"><b>${esc(bhT("st_h",{n:recs.length}))}</b></p><div id="stList">`, anyRes=false;
+  recs.forEach((r,i)=>{
+    h+=take(r.epoch, i?recs[i-1].epoch:Infinity);
+    const res=r.resumed?"resumed":r.relight&&r.result==="ok"?"relight":r.result; if(r.resumed) anyRes=true;
+    const col=res==="ok"||res==="relight"?c.ok||c.dim:res==="failed"?c.warn:c.dim, s=by?by(r):"";
+    const bits=[s?bhT("st_by",{s}):"", r.flame_min!=null&&!r.resumed?bhT("st_flame",{a:fmt(r.flame_min,1)}):"",
+      r.result==="ok"&&r.minutes!=null?bhT("st_full",{a:fmt(r.minutes,1)}):"", r.off_h!=null?bhT("st_off",{a:fmt(r.off_h,1)}):""].filter(Boolean);
+    h+=`<div class="stRow" data-res="${esc(res)}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhWhen(r.epoch))}</b> · <span style="color:${col}">${esc(bhT("st_r_"+res))}${r.alarm?" ("+esc(bhT("st_alarm",{a:r.alarm}))+")":""}</span>
+      ${bits.length?`<br><span style="color:${c.dim};font-size:14px">${esc(bits.join(" · "))}</span>`:""}</div>`; });
+  h+=`</div>`;                                       // changes before the oldest start shown are left out
+  if(anyRes) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_resumed_note"))}</p>`;
+  return h+cfgCmpHTML(ign,c);
+}
+// the lighting settings compared: per combination how many starts, how many lit, typical time to flame and to full heat
+function cfgCmpHTML(ign,c){
+  const S=(ign&&ign.by_settings)||[];
+  let h=`<p style="margin:14px 0 4px"><b>${esc(bhT("st_cfg_h"))}</b></p>`;
+  if(!S.length) h+=`<p style="margin:0;color:${c.dim}">—</p>`;
+  h+=`<div id="cfgCmp">`+S.map(s=>{ const cf=s.cfg||{}, name=Object.keys(cf).map(k=>{ const [nm,u]=ccParts(k); return nm+" "+ccNum(cf[k])+(u?" "+u:""); }).join(", ")||"—";
+    return `<div class="cfgRow"${s.now?' data-now="1"':""} style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(name)}</b>${s.now?` <span style="color:${c.ok||c.dim};font-weight:600">● ${esc(bhT("st_cfg_now"))}</span>`:""}
+      <br><span style="color:${c.dim};font-size:14px">${esc([bhT("st_cfg_n",{n:s.n,ok:s.ok}), s.flame_min!=null?bhT("st_cfg_flame",{a:fmt(s.flame_min,1)}):"", s.median_min!=null?bhT("st_cfg_full",{a:fmt(s.median_min,1)}):""].filter(Boolean).join(" · "))}</span></div>`; }).join("")+`</div>`;
+  if(S.length===1) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_none"))}</p>`;
+  return h+`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_note"))}</p>`;
+}
+
+// ---- the flame sensor per power band (api/optimiser "lux"): learned so far, or usual against now
+function luxHTML(lx,c){
+  if(!lx) return "";
+  if(lx.status==="no_field") return `<p style="margin:0;color:${c.dim}">${esc(bhT("fs_nofield"))}</p>`;
+  const B=lx.bands||{}, nm=lx.need_min||30, nb=lx.need_burns||3;
+  const row=k=>{ const b=B[k]||{}; let s, warn=false;
+    if(!b.n) s=bhT("fs_none");
+    else if(b.learning) s=bhT("fs_learn",{m:Math.min(b.min||0,nm),nm,b:Math.min(b.burns||0,nb),nb});
+    else { warn=(b.drop_pct||0)>=10; s=bhT("fs_ready",{a:fmt(b.baseline,0),c:fmt(b.current,0)})+" "+(warn?bhT("fs_drop",{p:fmt(b.drop_pct,0)}):bhT("fs_same")); }
+    return `<div class="fsRow" data-band="${k}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhT("fs_band_"+k))}</b><br><span style="color:${warn?c.warn:c.dim};font-size:14px">${esc(s)}</span></div>`; };
+  return `<p style="margin:0 0 4px"><b>${esc(bhT("fs_h"))}</b></p><div id="fsBands">${["low","mid","high"].map(row).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("fs_how",{nm,nb}))}${lx.reset_epoch?" "+esc(bhT("fs_cleaned",{d:bhWhen(lx.reset_epoch)})):""}</p>`;
+}
 
 // ---- software update card (a Raspberry Pi with the updater, pi/pelletpi-update.sh). The monitor says which state
 // it is (api/update "view", made by burner_ext.update_info); here are the words and the buttons for both pages.
@@ -861,7 +1018,10 @@ async function updAsk(what){ let ok=false;
 // ============================================================ text (EN / DA)
 const I18N={
  en:{
-  brand:"Home heating", tab_now:"Now", tab_pel:"Pellets & ash", tab_pel_s:"Pellets", tab_hist:"History", tab_sch:"Heating plan", tab_sch_s:"Plan", tab_set:"Settings", ar_title:"Automatic alarm reset", ar_s:"Does what you would do by hand: reset the alarm and start again. Only for the ticked alarms, only if the alarm came while burning, at most 2 times in 24 hours. Never for burner disconnected, sensor faults, fuse or overheating. All the boiler's own safety functions stay on.", ar_which:"Alarms that may be reset", ar_wait:"Wait after the alarm before the reset", ar_max:"At most per 24 hours", vv_title:"Hot-water tank sensor (your own)", vv_s:"The boiler shows it as VVB and uses it for hot water first (HWT PRIORITY). If the sensor goes quiet, the boiler is told the safe value, so a broken sensor can never start the boiler.", vv_src:"Where the temperature comes from", vv_mqtt:"Home Assistant (MQTT)", vv_http:"A script on this monitor", vv_onewire:"Sensor on the monitor (DS18B20)", vv_age:"Use the safe value after", vv_safe:"Safe value when no reading", vv_q:"Send your own hot-water tank temperature to the boiler? Only with a sensor you trust.", beta:"BETA", wx_title:"Outside temperature", wx_s:"Optional. Fetched every 30 min from Open-Meteo (free, no account). Only the place you pick is sent, rounded to about 1 km. Everything else works without internet.", wx_find:"Town or postcode", wx_search:"Find", wx_none:"No place found.", wx_err:"No answer from the weather service. Is the monitor on the internet?", wx_now:"{c} °C in {n} now · next 24 h {lo} to {hi} °C", wx_wait:"Fetching…", wx_old:"Last reading {m} min ago (no internet?)", wx_off:"Turn off", wx_chip:"Outside {c}°", wx_pick:"Pick your place:", wx_map:"Or tap the map near where you live - it snaps to the nearest town.", wx_sel:"Using {n}", wx_world:"Only places in Denmark and Germany, where the burner is sold.", set_after:"Stop only when the power has stayed that low for", tab_set_s:"Settings", set_heat_on:"Heating plan", set_heat_on_s:"The web stops and starts the burner by your plan.", set_periods:"Edit the periods →", set_screen:"This screen", set_lang:"Language", set_theme:"Theme", set_anim:"Animations", set_anim_rm:"This device asks for reduced motion, so the fire in the ring stays off.", set_more:"The boiler’s own values and the step-by-step view: classic page →", set_bin:"Ash bin holds", set_plan_link:"Stop and start rules: Settings →",
+  brand:"Home heating", tab_now:"Now", tab_pel:"Pellets & ash", tab_pel_s:"Pellets", tab_hist:"History", tab_sch:"Heating plan", tab_sch_s:"Plan", tab_set:"Settings", ar_title:"Automatic alarm reset", ar_s:"Does what you would do by hand: reset the alarm and start again. Only for the ticked alarms, only if the alarm came while burning, at most 2 times in 24 hours. Never for burner disconnected, sensor faults, fuse or overheating. All the boiler's own safety functions stay on.", ar_which:"Alarms that may be reset", ar_wait:"Wait after the alarm before the reset", ar_max:"At most per 24 hours", vv_title:"Hot-water tank sensor (your own)", vv_s:"The boiler shows it as VVB and uses it for hot water first (HWT PRIORITY). If the sensor goes quiet, the boiler is told the safe value, so a broken sensor can never start the boiler.", vv_src:"Where the temperature comes from", vv_mqtt:"Home Assistant (MQTT)", vv_http:"A script on this monitor", vv_onewire:"Sensor on the monitor (DS18B20)", vv_age:"Use the safe value after", vv_safe:"Safe value when no reading",
+  vv_how_mqtt:"In Home Assistant, send the tank temperature to the topic burner/cmd/vvb (just the number, e.g. 52.5) at least every 5 minutes, not retained.",
+  vv_how_http:"Send the number to this page: POST /api/vvb with {\"c\": 52.5} (from this monitor only).",
+  vv_how_onewire:"A DS18B20 sensor on the Raspberry Pi's 1-wire pin, taped to the tank's sensor pocket. Read every 30 s.", vv_q:"Send your own hot-water tank temperature to the boiler? Only with a sensor you trust.", beta:"BETA", wx_title:"Outside temperature", wx_s:"Optional. Fetched every 30 min from Open-Meteo (free, no account). Only the place you pick is sent, rounded to about 1 km. Everything else works without internet.", wx_find:"Town or postcode", wx_search:"Find", wx_none:"No place found.", wx_err:"No answer from the weather service. Is the monitor on the internet?", wx_now:"{c} °C in {n} now · next 24 h {lo} to {hi} °C", wx_wait:"Fetching…", wx_old:"Last reading {m} min ago (no internet?)", wx_off:"Turn off", wx_chip:"Outside {c}°", wx_pick:"Pick your place:", wx_map:"Or tap the map near where you live - it snaps to the nearest town.", wx_sel:"Using {n}", wx_world:"Only places in Denmark and Germany, where the burner is sold.", set_after:"Stop only when the power has stayed that low for", tab_set_s:"Settings", set_heat_on:"Heating plan", set_heat_on_s:"The web stops and starts the burner by your plan.", set_periods:"Edit the periods →", set_screen:"This screen", set_lang:"Language", set_theme:"Theme", set_anim:"Animations", set_anim_rm:"This device asks for reduced motion, so the fire in the ring stays off.", set_more:"The boiler’s own values and the step-by-step view: classic page →", set_bin:"Ash bin holds", set_plan_link:"Stop and start rules: Settings →",
   classic:"← Classic layout", live:"Live", nodata_chip:"No data", connecting:"Connecting…", upd_ver:"Version {v}",
   notice:"Unofficial hobby project, not made or supported by the boiler's manufacturer. Use at your own risk. Keep the boiler's own safety functions on and never bypass safety devices. MIT license, no warranty.",
   theme_auto:"Auto", theme_light:"Light", theme_dark:"Dark", theme_title:"Theme: auto, light or dark",
@@ -1010,7 +1170,10 @@ const I18N={
     x:["Read the boiler display","Note the alarm number","Call service"]},
  },
  da:{
-  brand:"Varme", tab_now:"Nu", tab_pel:"Piller & aske", tab_pel_s:"Piller", tab_hist:"Historik", tab_sch:"Varmeplan", tab_sch_s:"Plan", tab_set:"Indstillinger", ar_title:"Automatisk alarmnulstilling", ar_s:"Gør det samme som du gør i hånden: nulstiller alarmen og starter igen. Kun for de afkrydsede alarmer, kun når alarmen kom under fyring, højst 2 gange pr. døgn. Aldrig ved brænder frakoblet, følerfejl, sikring eller overkogning. Alle kedlens egne sikringer er stadig slået til.", ar_which:"Alarmer der må nulstilles", ar_wait:"Vent efter alarmen før nulstilling", ar_max:"Højst pr. døgn", vv_title:"VVB-føler (din egen)", vv_s:"Kedlen viser den som VVB og bruger den til varmt vand først (VVB PRIORITET). Holder føleren op med at sende, får kedlen den sikre værdi, så en defekt føler aldrig kan starte kedlen.", vv_src:"Hvor temperaturen kommer fra", vv_mqtt:"Home Assistant (MQTT)", vv_http:"Et script på denne monitor", vv_onewire:"Føler på monitoren (DS18B20)", vv_age:"Brug sikker værdi efter", vv_safe:"Sikker værdi uden måling", vv_q:"Send din egen VVB-temperatur til kedlen? Kun med en føler du stoler på.", beta:"BETA", wx_title:"Udetemperatur", wx_s:"Valgfri. Hentes hver 30. min fra Open-Meteo (gratis, uden konto). Kun det sted du vælger sendes, afrundet til ca. 1 km. Alt andet virker uden internet.", wx_find:"By eller postnummer", wx_search:"Find", wx_none:"Intet sted fundet.", wx_err:"Intet svar fra vejrtjenesten. Er monitoren på internettet?", wx_now:"{c} °C i {n} nu · næste døgn {lo} til {hi} °C", wx_wait:"Henter…", wx_old:"Seneste måling for {m} min siden (intet internet?)", wx_off:"Slå fra", wx_chip:"Ude {c}°", wx_pick:"Vælg dit sted:", wx_map:"Eller tryk på kortet tæt på hvor du bor - det vælger nærmeste by.", wx_sel:"Bruger {n}", wx_world:"Kun steder i Danmark og Tyskland, hvor brænderen sælges.", set_after:"Stop først når effekten har været så lav i", tab_set_s:"Indstillinger", set_heat_on:"Varmeplan", set_heat_on_s:"Websiden stopper og starter brænderen efter din plan.", set_periods:"Ret perioderne →", set_screen:"Denne skærm", set_lang:"Sprog", set_theme:"Tema", set_anim:"Animationer", set_anim_rm:"Denne enhed beder om mindre bevægelse, så ilden i ringen er slået fra.", set_more:"Kedlens egne værdier og trin-for-trin-visningen: klassisk side →", set_bin:"Askeskuffen rummer", set_plan_link:"Regler for stop og start: Indstillinger →",
+  brand:"Varme", tab_now:"Nu", tab_pel:"Piller & aske", tab_pel_s:"Piller", tab_hist:"Historik", tab_sch:"Varmeplan", tab_sch_s:"Plan", tab_set:"Indstillinger", ar_title:"Automatisk alarmnulstilling", ar_s:"Gør det samme som du gør i hånden: nulstiller alarmen og starter igen. Kun for de afkrydsede alarmer, kun når alarmen kom under fyring, højst 2 gange pr. døgn. Aldrig ved brænder frakoblet, følerfejl, sikring eller overkogning. Alle kedlens egne sikringer er stadig slået til.", ar_which:"Alarmer der må nulstilles", ar_wait:"Vent efter alarmen før nulstilling", ar_max:"Højst pr. døgn", vv_title:"VVB-føler (din egen)", vv_s:"Kedlen viser den som VVB og bruger den til varmt vand først (VVB PRIORITET). Holder føleren op med at sende, får kedlen den sikre værdi, så en defekt føler aldrig kan starte kedlen.", vv_src:"Hvor temperaturen kommer fra", vv_mqtt:"Home Assistant (MQTT)", vv_http:"Et script på denne monitor", vv_onewire:"Føler på monitoren (DS18B20)", vv_age:"Brug sikker værdi efter", vv_safe:"Sikker værdi uden måling",
+  vv_how_mqtt:"Send VVB-temperaturen fra Home Assistant til emnet burner/cmd/vvb (kun tallet, fx 52) mindst hvert 5. minut, ikke som gemt besked.",
+  vv_how_http:"Send tallet til denne side: POST /api/vvb med {\"c\": 52} (kun fra denne monitor).",
+  vv_how_onewire:"En DS18B20-føler på Raspberry Pi'ens 1-wire-ben, sat i VVB'ens følerlomme. Læses hvert 30. sekund.", vv_q:"Send din egen VVB-temperatur til kedlen? Kun med en føler du stoler på.", beta:"BETA", wx_title:"Udetemperatur", wx_s:"Valgfri. Hentes hver 30. min fra Open-Meteo (gratis, uden konto). Kun det sted du vælger sendes, afrundet til ca. 1 km. Alt andet virker uden internet.", wx_find:"By eller postnummer", wx_search:"Find", wx_none:"Intet sted fundet.", wx_err:"Intet svar fra vejrtjenesten. Er monitoren på internettet?", wx_now:"{c} °C i {n} nu · næste døgn {lo} til {hi} °C", wx_wait:"Henter…", wx_old:"Seneste måling for {m} min siden (intet internet?)", wx_off:"Slå fra", wx_chip:"Ude {c}°", wx_pick:"Vælg dit sted:", wx_map:"Eller tryk på kortet tæt på hvor du bor - det vælger nærmeste by.", wx_sel:"Bruger {n}", wx_world:"Kun steder i Danmark og Tyskland, hvor brænderen sælges.", set_after:"Stop først når effekten har været så lav i", tab_set_s:"Indstillinger", set_heat_on:"Varmeplan", set_heat_on_s:"Websiden stopper og starter brænderen efter din plan.", set_periods:"Ret perioderne →", set_screen:"Denne skærm", set_lang:"Sprog", set_theme:"Tema", set_anim:"Animationer", set_anim_rm:"Denne enhed beder om mindre bevægelse, så ilden i ringen er slået fra.", set_more:"Kedlens egne værdier og trin-for-trin-visningen: klassisk side →", set_bin:"Askeskuffen rummer", set_plan_link:"Regler for stop og start: Indstillinger →",
   classic:"← Klassisk layout", live:"Live", nodata_chip:"Ingen data", connecting:"Forbinder…", upd_ver:"Version {v}",
   notice:"Uofficielt hobbyprojekt, ikke lavet eller støttet af kedlens producent. Brug på eget ansvar. Lad kedlens egne sikkerhedsfunktioner være slået til, og omgå aldrig sikkerhedsudstyr. MIT-licens, ingen garanti.",
   theme_auto:"Auto", theme_light:"Lys", theme_dark:"Mørk", theme_title:"Tema: auto, lys eller mørk",
@@ -1213,7 +1376,7 @@ Object.assign(I18N.en,{
   nt_ev_link_lost:"The monitor loses contact with the boiler", nt_ev_link_back:"Contact with the boiler is back", nt_ev_silo_low:"The silo is low",
   nt_ev_ash:"The ash bin is almost full, the burner needs cleaning, or the ash plate has a problem", nt_ev_pi:"The monitor itself has a problem (disk full, too little power, too hot)", nt_ev_net:"Weak Wi-Fi or no internet for 30 minutes",
   nt_ev_burner_start:"The burner starts", nt_ev_burner_stop:"The burner stops", nt_ev_monitor_start:"The monitor (re)starts", nt_ev_daily:"A short summary of the last 24 h",
-  nt_silo_kg:"“Silo low” below", nt_daily_at:"Summary at", nt_lang_note:"Messages are written in the page’s language. The same message comes at most once every 30 minutes.",
+  nt_silo_kg:"“Silo low” below", nt_daily_at:"Summary at", nt_graph:"Add today's graph to the status reply", nt_graph_s:"When you send “status” from the phone, the answer has a small picture of the “Today and tomorrow morning” chart (07:00–22:00, at most one an hour). It goes via the ntfy server, like the text.", nt_lang_note:"Messages are written in the page’s language. The same message comes at most once every 30 minutes.",
   nt_test:"Send test", nt_busy:"Working…", nt_test_ok:"Test sent. Look at your phone.", nt_test_bad:"Not sent: {m}",
   nt_none:"No message sent yet.", nt_err_net:"no connection to the server (internet?)", nt_last:"Last message: {t} — {r}", nt_ok:"sent",
   nt_cert_err:"Certificate problem. Check the Pi’s clock — a wrong clock breaks certificates. Or update the certificates.",
@@ -1232,7 +1395,7 @@ Object.assign(I18N.da,{
   nt_ev_link_lost:"Monitoren mister kontakten med kedlen", nt_ev_link_back:"Kontakten med kedlen er tilbage", nt_ev_silo_low:"Der er lidt i siloen",
   nt_ev_ash:"Askeskuffen er næsten fuld, brænderen skal renses, eller askepladen har et problem", nt_ev_pi:"Monitoren selv har et problem (disk fuld, for lidt strøm, for varm)", nt_ev_net:"Svag Wi-Fi eller intet internet i 30 minutter",
   nt_ev_burner_start:"Brænderen starter", nt_ev_burner_stop:"Brænderen stopper", nt_ev_monitor_start:"Monitoren (gen)starter", nt_ev_daily:"En kort opsummering af de seneste 24 t",
-  nt_silo_kg:"“Lidt i siloen” under", nt_daily_at:"Opsummering kl.", nt_lang_note:"Beskederne skrives på sidens sprog. Den samme besked kommer højst én gang hvert 30. minut.",
+  nt_silo_kg:"“Lidt i siloen” under", nt_daily_at:"Opsummering kl.", nt_graph:"Tilføj dagens graf til svaret på status", nt_graph_s:"Når du sender “status” fra telefonen, har svaret et lille billede af grafen “I dag og i morgen tidlig” (kl. 7–22, højst ét i timen). Det går via ntfy-serveren, ligesom teksten.", nt_lang_note:"Beskederne skrives på sidens sprog. Den samme besked kommer højst én gang hvert 30. minut.",
   nt_test:"Send test", nt_busy:"Arbejder…", nt_test_ok:"Test sendt. Se på telefonen.", nt_test_bad:"Ikke sendt: {m}",
   nt_none:"Ingen besked sendt endnu.", nt_err_net:"ingen forbindelse til serveren (internet?)", nt_last:"Sidste besked: {t} — {r}", nt_ok:"sendt",
   nt_cert_err:"Problem med certifikater. Tjek Pi’ens ur — et forkert ur ødelægger certifikater. Eller opdatér certifikaterne.",
@@ -1295,10 +1458,10 @@ Object.assign(I18N.en,{
   st_env:"These values are in the .env file on the monitor. Change them there and restart the monitor. The guide shows how.",
   st_ha_none:"Home Assistant is not set up. It is optional. The guide shows how to connect it.", st_na:"Not available here.",
   st_screen_s:"Kept on this device only.",
-  st_sv_make:"Make picture", st_sv_relearn:"Relearn after service", st_sv_lux:"I cleaned the flame sensor", st_sv_lux_s:"Learns the normal flame level again: about 6 hours of steady burning. No flame warnings meanwhile.",
+  st_sv_make:"Make picture", st_sv_relearn:"Relearn after service", st_sv_lux:"I cleaned the flame sensor", st_sv_lux_s:"Learns the normal flame level again: 30 min of steady burning per power level, over at least 3 burns. No flame warnings meanwhile.",
   st_sv_fan:"Fan replaced or fan settings changed", st_sv_fan_s:"Learns the fan’s normal speed again.", st_sv_opt:"Reset the history after service", st_sv_opt_s:"Starts a fresh 4-week period. Older days are ignored. Nothing is deleted.",
   st_sv_ign:"Hide the starts until now", st_sv_ign_s:"After test starts: the lighting history begins again from now.", st_sv_do:"Relearn", st_sv_reset:"Reset", st_sv_hide:"Hide", st_sv_done:"Done.",
-  st_ab_ver:"Version", st_ab_port:"Page port", st_ab_remote:"Start and stop from the page", st_ab_remote_off:"off (view only)", st_ab_keep:"History kept", st_ab_days:"{d} days",
+  st_ab_ver:"Version", st_ab_port:"Page port", st_port_in:"{p} (inside: {i})", st_ab_remote:"Start and stop from the page", st_ab_remote_off:"off (view only)", st_ab_keep:"History kept", st_ab_days:"{d} days",
   st_ab_serial:"Cable to the boiler", st_ab_serial_auto:"found by itself", st_ab_serial_fixed:"fixed name in .env", st_ab_log:"Log file, at most", st_ab_mb:"{n} MB", st_guide:"Open the guide",
   nt_phone:"Your phone", nt_tell:"Tell me about", nt_g_problems:"Problems", nt_g_reminders:"Reminders", nt_g_activity:"Activity", nt_own:"Own server and certificates"});
 Object.assign(I18N.da,{
@@ -1321,10 +1484,10 @@ Object.assign(I18N.da,{
   st_env:"Disse værdier står i filen .env på monitoren. Ret dem dér og genstart monitoren. Guiden viser hvordan.",
   st_ha_none:"Home Assistant er ikke sat op. Det er valgfrit. Guiden viser, hvordan det forbindes.", st_na:"Findes ikke her.",
   st_screen_s:"Gemmes kun på denne enhed.",
-  st_sv_make:"Lav billede", st_sv_relearn:"Lær igen efter service", st_sv_lux:"Jeg har renset flammeføleren", st_sv_lux_s:"Lærer flammens normale niveau igen: ca. 6 timers stabil fyring. Ingen flammeadvarsler imens.",
+  st_sv_make:"Lav billede", st_sv_relearn:"Lær igen efter service", st_sv_lux:"Jeg har renset flammeføleren", st_sv_lux_s:"Lærer flammens normale niveau igen: 30 min stabil fyring pr. ydelsesniveau, over mindst 3 fyringer. Ingen flammeadvarsler imens.",
   st_sv_fan:"Røgsuger skiftet eller dens indstillinger ændret", st_sv_fan_s:"Lærer røgsugerens normale omdrejninger igen.", st_sv_opt:"Nulstil historikken efter service", st_sv_opt_s:"Starter en ny 4-ugers periode. Ældre dage ignoreres. Intet slettes.",
   st_sv_ign:"Skjul starterne indtil nu", st_sv_ign_s:"Efter teststarter: tændingshistorikken begynder forfra fra nu.", st_sv_do:"Lær igen", st_sv_reset:"Nulstil", st_sv_hide:"Skjul", st_sv_done:"Udført.",
-  st_ab_ver:"Version", st_ab_port:"Sidens port", st_ab_remote:"Start og stop fra siden", st_ab_remote_off:"fra (kun visning)", st_ab_keep:"Historik gemmes", st_ab_days:"{d} dage",
+  st_ab_ver:"Version", st_ab_port:"Sidens port", st_port_in:"{p} (indeni: {i})", st_ab_remote:"Start og stop fra siden", st_ab_remote_off:"fra (kun visning)", st_ab_keep:"Historik gemmes", st_ab_days:"{d} dage",
   st_ab_serial:"Kabel til kedlen", st_ab_serial_auto:"fundet automatisk", st_ab_serial_fixed:"fast navn i .env", st_ab_log:"Logfil, højst", st_ab_mb:"{n} MB", st_guide:"Åbn guiden",
   nt_phone:"Din telefon", nt_tell:"Giv mig besked om", nt_g_problems:"Problemer", nt_g_reminders:"Påmindelser", nt_g_activity:"Aktivitet", nt_own:"Egen server og certifikater"});
 // the boiler's own alarm names in each language (same as the classic page)
@@ -1335,7 +1498,8 @@ const SERVICE_ALARMS=TABLES.alarm_never_auto_reset;          // call service; no
 let LANG="en";
 try{ const s=localStorage.getItem("burner_lang"); if(s==="en"||s==="da") LANG=s; }catch(e){}
 function t(k,p){
-  let s=(I18N[LANG]&&I18N[LANG][k]!=null)?I18N[LANG][k]:(I18N.en[k]!=null?I18N.en[k]:k);
+  const B=BH_TXT[LANG]||BH_TXT.en;          // the Burner health words are in the SHARED block
+  let s=(I18N[LANG]&&I18N[LANG][k]!=null)?I18N[LANG][k]:(B[k]!=null?B[k]:(I18N.en[k]!=null?I18N.en[k]:k));
   if(p && typeof s==="string") for(const key in p) s=s.split("{"+key+"}").join(p[key]);
   return s;
 }
@@ -1358,6 +1522,10 @@ function fmtAgo(s){ s=Math.max(0,Math.round(s));
 function fmtDur(s){ s=Math.max(0,Math.round(s)); if(s<90) return s+" s"; if(s<5400) return Math.round(s/60)+" min"; return fmtAgo(s); }
 function mmss(s){ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
 const stateWord=s=>(L("words")[s]!=null?L("words")[s]:"#"+s);
+// the port the browser uses (80 / 443 when the address has none; pi/enable-port-80.sh forwards 80 to the monitor),
+// and the monitor's own port only when it differs: "80 (inside: 8787)"
+const pagePort=(a,lp)=>{ if(lp==null) lp=location.port; const p=lp||(location.protocol==="https:"?"443":"80"), i=a&&a.http_port;
+  return i&&String(i)!==p?t("st_port_in",{p,i}):p; };
 const stateName=s=>(L("states")[s]!=null?L("states")[s]:"#"+s);
 const alarmRaw=n=>(ALARM_NAMES[LANG]||ALARM_NAMES.en)[n]||("ALARM "+n);
 const sentence=s=>s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():s;
@@ -2190,7 +2358,7 @@ function healthRows(){
   return ((OPT&&OPT.health&&OPT.health.checks)||[]).map(c=>{
     if(c.st==="learn") return {k:c.k,st:"learn"};
     const p=c.p||{}, dec=(c.k==="light"&&c.why!=="fail")||c.k==="ash"||c.k==="fan";       // minutes / seconds with one decimal
-    const row={k:c.k, st:c.st, txt:t("bh_"+c.k+"_"+c.why,{a:dec?nf(p.a,1):p.a,n:p.n})};
+    const row={k:c.k, st:c.st, p, txt:t("bh_"+c.k+"_"+c.why,{a:dec?nf(p.a,1):p.a,n:p.n,f:p.f,d:p.d})};
     if(p.usual!=null) row.ref=t("bh_usual",{b:nf(p.usual,1)+(c.k==="ash"?" s":" min")});
     return row; });
 }
@@ -2200,21 +2368,58 @@ function healthHead(rows){
   if(rows.every(r=>r.st==="learn")) return {cls:"learn", txt:t("bh_learn"), bad:0};
   return {cls:"ok", txt:t("bh_ok"), bad:0};
 }
-// clean=true (Pellets & ash): the same card, plus since when it compares and the "I cleaned the burner" button
+// clean=true (Pellets & ash): the same card, plus since when it compares and the "I cleaned the burner" button; its rows
+// lead to the same row on History. History: the rows with more to show open in place (Time to flame, Flame sensor,
+// Fire rescues), closed while the check is fine and open by themselves when it is not, unless the owner chose.
 function healthChecklistHTML(clean){
   if(!OPT) return "";
   const rows=healthRows(), h=healthHead(rows), col={ok:"var(--ok)",bad:"var(--amberText)",learn:"var(--ink3)"}[h.cls];
   const at=OPT.health&&OPT.health.cleaned_at, sub=clean&&at?t("hl_sub",{d:dmon(at)}):t("bh_sub");
+  const line=(r,more)=>`<i class="${r.st}">${r.st==="ok"?"✓":r.st==="bad"?"!":"…"}</i><div><b>${esc(t("bh_"+r.k))}</b><span>${esc(r.st==="learn"?t("bh_learning"):r.txt)}</span></div>${r.ref||more?`<em>${esc(r.ref||"")}${more?'<span class="cv" aria-hidden="true">▾</span>':""}</em>`:""}`;
+  const body=rows.map(r=>{
+    if(clean) return `<a href="#history" data-bhgo="${r.k}">${line(r,true)}</a>`;
+    const d=bhDetail(r);
+    return d?`<details id="bh-${r.k}" data-bh="${r.k}"${bhOpen(r)?" open":""}><summary>${line(r,true)}</summary><div class="hcb">${d}</div></details>`:`<div>${line(r)}</div>`; }).join("");
   return `<div class="card" ${clean?"":'id="health" '}style="margin-top:${clean?20:0}px"><div class="cardh"><span class="lbl h">${esc(t("bh_h"))}</span><span class="note">${esc(sub)}</span></div>
     <div style="font-size:22px;font-weight:650;letter-spacing:-.02em;margin-top:4px;color:${col}">${esc(h.txt)}</div>
-    <div class="hc">${rows.map(r=>`<div><i class="${r.st}">${r.st==="ok"?"✓":r.st==="bad"?"!":"…"}</i><div><b>${esc(t("bh_"+r.k))}</b><span>${esc(r.st==="learn"?t("bh_learning"):r.txt)}${r.k==="light"&&r.st==="bad"&&IGN&&IGN.help?` <a class="link" href="#history" data-lh="open">${esc(lhT("open"))}</a>`:""}</span></div>${r.ref?`<em>${esc(r.ref)}</em>`:""}</div>`).join("")}</div>${clean?`
+    <div class="hc">${body}</div>${clean?`
     <p class="note" style="margin-top:10px">${esc(t("hl_why"))}</p>
     <div class="ctl" style="margin-top:12px"><button type="button" class="btn sec" data-cleaned="1">${esc(t("hl_cleaned"))}</button></div>`:""}</div>`;
 }
+// what a row opens (the words and the layout are in the SHARED block: startsHTML, lhBody, luxHTML, rescListHTML)
+const BH_COL={warn:"var(--amberText)",dim:"var(--ink2)",line:"var(--grid)",ok:"var(--ok)"};
+function bhDetail(r){
+  if(r.k==="light"){ if(!IGN) return ""; const h=IGN.help;
+    return `<div id="lightHelp">${h?`<p style="margin:0 0 10px"><b id="lhTitle">${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${lhBad(h)?BH_COL.warn:BH_COL.dim}">${esc(lhVerdict(h))}</span></p>`:""}
+      ${startsHTML(IGN,BH_COL,srcText)}${h?lhBody(h,BH_COL,"guide#trouble-after-upgrade"):""}</div>`; }
+  if(r.k==="flame"){ const lx=OPT&&OPT.lux; if(!lx) return "";
+    return luxHTML(lx,BH_COL)+`<div class="ctl" style="margin-top:12px"><button type="button" class="btn sec" data-luxclean="1">${esc(bhT("fs_clean"))}</button></div>`; }
+  if(r.k==="rescue"&&r.p) return rescListHTML(r.p,BH_COL);
+  return "";
+}
+// open by itself when the check is bad (Time to flame: also when the lighting help says slow / fails); the owner's
+// own open / close is kept (this browser) until the check changes
+let BH_USER={}; try{ BH_USER=JSON.parse(localStorage.getItem("burner_bh_open")||"{}")||{}; }catch(e){}
+const bhBad=r=>r.st==="bad"||(r.k==="light"&&!!(IGN&&lhBad(IGN.help)));
+function bhOpen(r){ const u=BH_USER[r.k], st=bhBad(r)?"bad":"ok"; return u&&u.st===st?!!u.o:st==="bad"; }
+function bhChose(k,open){ const r=healthRows().find(x=>x.k===k); BH_USER[k]={o:open,st:r&&bhBad(r)?"bad":"ok"};
+  try{ localStorage.setItem("burner_bh_open",JSON.stringify(BH_USER)); }catch(e){} }
+document.addEventListener("click",e=>{
+  const sm=e.target.closest("#health .hc>details>summary"); if(sm){ bhChose(sm.parentElement.dataset.bh,!sm.parentElement.open); return; }
+  const a=e.target.closest("[data-bhgo]"); if(!a) return;      // Now / Pellets & ash: go to that row on History, opened
+  e.preventDefault(); const k=a.dataset.bhgo; bhChose(k,true);
+  if(TAB!=="history") location.hash="#history"; else renderHistory();
+  setTimeout(()=>{ const d=document.getElementById("bh-"+k)||document.getElementById("health"); if(d) d.scrollIntoView({behavior:"smooth",block:"start"}); },80);
+});
+document.addEventListener("click",async e=>{
+  if(!e.target.closest("[data-luxclean]")) return;
+  if(!(await askConfirm(bhT("fs_clean_q"),bhT("fs_clean")))) return;
+  try{ const {ok}=await api("api/lux/reset",{}); toast(ok?t("saved"):t("save_fail")); if(ok) loadSlow(); }catch(err){ toast(t("save_fail")); }
+});
 // the last start, step by step: this start against the usual time (starts that lit, last 4 weeks)
 function lastStartHTML(){
   if(!IGN) return "";
-  const recs=(IGN.records||[]).filter(r=>r.result==="ok"&&!r.relight&&r.minutes>0), last=recs[recs.length-1];
+  const recs=(IGN.records||[]).filter(r=>r.result==="ok"&&!r.relight&&!r.resumed&&r.minutes>0), last=recs[recs.length-1];
   const head=`<div class="cardh"><span class="lbl h">${esc(t("ls_h"))}</span>${last?`<span class="note">${esc(dmon(last.epoch)+" "+hhmm(last.epoch))}</span>`:""}</div>`;
   if(!last) return `<div class="card" style="margin-top:20px">${head}<div class="empty">${esc(t("ls_none"))}</div></div>`;
   const by=srcText(last);
@@ -2236,23 +2441,16 @@ function lastStartHTML(){
     <div class="leg" style="margin-top:10px"><span><i style="background:var(--ember)"></i>${esc(t("ls_this"))}</span><span><i style="background:var(--okSoft);border:1px solid var(--ok)"></i>${esc(t("ls_usual"))}</span></div>${bnote?`
     <div class="note" id="lsBase" style="margin-top:6px">${esc(bnote)}</div>`:""}</div>`;
 }
-// "Trouble lighting?": the lighting help card (History). The card itself is in the SHARED block (lhHTML); read only.
-const LH_COL={warn:"var(--amberText)",dim:"var(--ink2)",line:"var(--line)"};
-function lightHelpHTML(){
-  const h=IGN&&IGN.help;
-  return h?`<div class="card" id="lightHelp" style="margin-top:20px">${lhHTML(h,LH_COL,"guide#trouble-after-upgrade")}</div>`:"";
-}
+// "Copy lighting report" (inside the Time to flame row of Burner health). Read only.
 document.addEventListener("click",e=>{
-  const b=e.target.closest("[data-lh]"); if(!b) return;
-  if(b.dataset.lh==="copy"){ if(IGN&&IGN.help) lhCopy(lhReport(IGN.help,(S&&S.version)||(ABOUT&&ABOUT.version)),b); return; }
-  e.preventDefault(); LH_OPEN=true;                    // from the Burner health row: open the card on History and go to it
-  if(TAB!=="history") location.hash="#history"; else renderHistory();
-  setTimeout(()=>{ const d=document.getElementById("lightHelp"); if(d) d.scrollIntoView({behavior:"smooth",block:"start"}); },60);
+  const b=e.target.closest("[data-lh=copy]"); if(!b) return;
+  if(IGN&&IGN.help) lhCopy(lhReport(IGN.help,(S&&S.version)||(ABOUT&&ABOUT.version)),b);
 });
 function renderHealthLine(el){
   if(!el) return;
   const h=OPT?healthHead(healthRows()):null;
-  el.innerHTML=h&&h.bad?`<a class="hline" href="#history"><span style="font-size:18px">!</span><span>${esc(t("bh_now",{x:h.txt}))}</span><span style="margin-left:auto">→</span></a>`:"";
+  const k=h&&h.bad?(healthRows().find(r=>r.st==="bad")||{}).k:"";
+  el.innerHTML=h&&h.bad?`<a class="hline" href="#history" data-bhgo="${esc(k)}"><span style="font-size:18px">!</span><span>${esc(t("bh_now",{x:h.txt}))}</span><span style="margin-left:auto">→</span></a>`:"";
 }
 // weak Wi-Fi / no internet for 15+ min (the server sends "net" only then)
 function renderNetLine(el){
@@ -2593,7 +2791,7 @@ function stState(g){                          // the one line under a group's na
   if(g==="reset") return {s:onoff((st.auto_reset||{}).enabled)};
   if(g==="tank") return {s:onoff((st.vvb||{}).enabled)};
   if(g==="service") return {s:t("st_l_service")};
-  const a=ABOUT||{}; if(a.version) p.push(t("upd_ver",{v:a.version})); if(a.http_port) p.push(t("st_l_port",{p:a.http_port})); if(a.keep_days) p.push(t("st_l_days",{d:nf(a.keep_days,0)}));
+  const a=ABOUT||{}; if(a.version) p.push(t("upd_ver",{v:a.version})); p.push(t("st_l_port",{p:pagePort(a)})); if(a.keep_days) p.push(t("st_l_days",{d:nf(a.keep_days,0)}));
   return {s:p.join(" · ")||t("st_l_about"),dot:!!(UPD&&UPD_LOOK.includes(UPD.view.key))};
 }
 const stShown=g=>g!=="alerts"||!!(NT&&NT.available!==false);     // phone alerts: only where the monitor can send them
@@ -2641,14 +2839,14 @@ function stPaneHTML(g){
       <div class="f-t" style="margin-bottom:10px"><span class="f-msg${m?(m.ok?" ok":" bad"):""}" data-fmsg="auto_reset.alarms" role="status">${m?esc(m.text):""}</span></div>
       ${fRow("auto_reset.wait_min")}${fRow("auto_reset.max_per_day")}</div>`; }
   else if(g==="tank") h=`<div class="card">${fRow("vvb.enabled",{lbl:t("st_sw")})}<p class="note" style="margin-top:6px">${esc(t("vv_s"))}</p></div>
-    <div class="card">${fRow("vvb.source")}${fRow("vvb.max_age_min")}${fRow("vvb.safe_c")}</div>`;
+    <div class="card">${fRow("vvb.source")}<p class="note" id="vvHow" style="margin-top:6px">${esc(t("vv_how_"+((((SETS.settings||{}).vvb)||{}).source||"mqtt")))}</p>${fRow("vvb.max_age_min")}${fRow("vvb.safe_c")}</div>`;
   else if(g==="service"){ const act=(k,b)=>stRow(t("st_sv_"+k),`<button type="button" class="btn sec" data-stsv="${k}">${esc(t(b))}</button>`,t("st_sv_"+k+"_s")); auto=false;
     h=`<div class="card">${stRow(t("s2_btn"),`<button type="button" class="btn sec" data-act="share2">${esc(t("st_sv_make"))}</button>`,t("s2_tip"))}</div>
     <div class="card"><div class="lbl h" style="margin-bottom:6px">${esc(t("st_sv_relearn"))}</div>${act("lux","st_sv_do")}${act("fan","st_sv_do")}${act("opt","st_sv_reset")}${act("ign","st_sv_hide")}</div>
     <div class="card">${stRow(t("su_set_h"),`<button type="button" class="btn sec" data-su="again">${esc(t("su_again"))}</button>`,t("su_again_s"))}</div>
     <div class="card"><a class="link" href="classic">${esc(t("set_more"))}</a></div>`; }
   else { const a=ABOUT||{}; auto=false;
-    h=`<div class="card" id="updCard"${UPD?"":" hidden"}>${updCardHTML(UPD_CLS)}</div><div class="card"><div class="kv">${stKv(t("st_ab_ver"),a.version)}${stKv(t("st_ab_port"),a.http_port)}
+    h=`<div class="card" id="updCard"${UPD?"":" hidden"}>${updCardHTML(UPD_CLS)}</div><div class="card"><div class="kv">${stKv(t("st_ab_ver"),a.version)}${stKv(t("st_ab_port"),pagePort(a))}
       ${stKv(t("st_ab_remote"),a.remote_start==null?"":t(a.remote_start?"st_allowed":"st_ab_remote_off"))}${stKv(t("st_ab_keep"),a.keep_days?t("st_ab_days",{d:nf(a.keep_days,0)}):"")}
       ${stKv(t("st_ab_serial"),a.serial?t(a.serial==="auto"?"st_ab_serial_auto":"st_ab_serial_fixed"):"")}${stKv(t("st_ab_log"),a.log_max_mb?t("st_ab_mb",{n:nf(a.log_max_mb,0)}):"")}</div>
       <div class="f-row"><a class="link" href="guide" target="_blank" rel="noopener">${esc(t("st_guide"))}</a></div></div>
@@ -2820,6 +3018,7 @@ function ntCardHTML(){
         <span class="note">${esc(t("nt_new_s"))}</span></div></div>
     <div class="card"><div class="st-cap" style="margin:0">${esc(t("nt_tell"))}</div>
       ${NT_GROUPS.map(([g,ks])=>`<div class="note" style="margin:14px 0 2px"><b>${esc(t("nt_g_"+g))}</b></div><div>${ks.map(evRow).join("")}</div>`).join("")}
+      <div class="f-row" style="margin-top:10px"><div class="f-t"><b>${esc(t("nt_graph"))}</b><span>${esc(t("nt_graph_s"))}</span>${msg("nt.graph")}</div><div class="f-c">${sw('id="ntGraph"',!!c.graph)}</div></div>
       <p class="note" style="margin-top:10px">${esc(t("nt_lang_note"))}</p></div>
     ${pcCardHTML(msg)}
     <details class="card f-more" data-fold="ntown"${ST_OPEN.ntown?" open":""}><summary>${esc(t("nt_own"))}</summary>
@@ -2901,6 +3100,7 @@ document.addEventListener("click",async e=>{
 document.addEventListener("change",e=>{
   const el=e.target; if(!el.closest||!el.closest("#ntCard")) return;
   if(el.id==="ntOn") ntSave({enabled:el.checked},"nt.enabled");
+  else if(el.id==="ntGraph") ntSave({graph:el.checked},"nt.graph");
   else if(el.dataset.ntev) ntSave({events:{[el.dataset.ntev]:el.checked}},"nt."+el.dataset.ntev);
   else if(el.id==="ntServer") ntSave({server:el.value.trim()},"nt.server");
   else if(el.id==="ntSilo"){ const n=numTyped(el.value); if(Number.isInteger(n)&&n>=1&&n<=5000) ntSave({silo_low_kg:n},"nt.silo_low"); else fMsg("nt.silo_low",{ok:false,text:t("st_e_num",{a:1,b:nf(5000,0)})}); }
@@ -3218,7 +3418,6 @@ function renderHistory(){
     </div>
     ${ignSectionHTML(v)}
     ${lastStartHTML()}
-    ${lightHelpHTML()}
     <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("fp_h"))}</span><span class="note">${esc(t("fp_sub"))}</span></div><div class="chart" id="cFP"></div></div>
     <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("ev_h"))}</span></div>${eventsHTML(15)}</div>`;
   chartFP(document.getElementById("cFP"));

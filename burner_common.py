@@ -16,6 +16,8 @@ STATE_LABELS = {0: "STOPPET", 1: "WAITING", 2: "OPSTART", 3: "IGNITION",
 # Plain words (Home Assistant, phone alerts)
 STATE_WORDS = {0: "Stopped", 1: "Waiting", 2: "Starting", 3: "Lighting", 4: "Running",
                5: "Pause / burning out", 6: "Alarm", 7: "Fire rescue"}
+STATE_WORDS_DA = {0: "Stoppet", 1: "Afventer", 2: "Opstart", 3: "Optænding", 4: "Drift",
+                  5: "Pausestop", 6: "Alarm", 7: "Redder ilden"}       # the pages' words ("Redder ilden", not "Redder bål")
 # The words on the web pages (their "states" lists), English and Danish
 STATE_PAGE = {"en": ["STOPPED", "WAITING", "STARTING", "IGNITION", "RUNNING", "PAUSE/STOP", "ALARM", "FIRE RESCUE"],
               "da": ["STOPPET", "AFVENTER", "OPSTART", "OPTÆNDING", "DRIFT", "PAUSESTOP", "ALARM", "REDDER BÅL"]}

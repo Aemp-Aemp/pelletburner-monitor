@@ -99,6 +99,7 @@
 "pi":true,
 "silo_low":true
 },
+"graph":true,
 "lang":"",
 "server":"https://ntfy.sh",
 "silo_low_kg":50

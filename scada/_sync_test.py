@@ -36,6 +36,8 @@ shared = sync_pages.shared_js()
 names = re.findall(r"^const (\w+)=", shared, re.M)
 check("shared.js holds the helpers", names == ["LOC", "esc", "fmt", "median", "clock", "niceStep", "niceAxis", "axisDec", "api",
                                              "LH_TXT", "lhT", "LH_KW", "lhVal", "lhBad", "lhBoiler",   # + the lighting help card
+                                             "BH_TXT", "bhT", "bhWhen", "CC_NAMES", "ccName", "ccParts", "ccNum",
+                                             "ccChange", "rsOutcome", "sentenceCase",   # + the Burner health details
                                              "UPD_TXT", "updT"])                                         # + the update card
 check("one clock style (17:15) in both languages: times via clock(), not the browser's locale",
       all("toLocaleTimeString" not in read(p) for p in sync_pages.PAGES))

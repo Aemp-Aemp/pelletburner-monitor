@@ -202,16 +202,18 @@ with _synth.Replay(PORT) as rp:
         check("14 page: service numbers '1e1' refused", r == "min_pct")
         # 17 /classic: same strict rule, and a bad field is not sent
         pg.goto(rp.base + "/classic", wait_until="domcontentloaded")
-        pg.wait_for_function("typeof numTyped==='function' && typeof saveSchedule==='function'")
+        pg.wait_for_function("typeof numTyped==='function' && typeof saveAutoReset==='function' && typeof switchTab==='function'")
+        pg.evaluate("switchTab('sch')")
+        pg.wait_for_function("typeof AR!=='undefined' && !!AR")
         got = pg.evaluate("['0x10','1e3','+5','Infinity','5 ','1,5','007'].map(numTyped)")
         check("17 classic: numTyped like /home",
               all(v is None or v != v for v in got[:4]) and got[4:] == [5, 1.5, 7])
-        pg.evaluate("()=>{ document.getElementById('schMinOff').value='1e3'; return saveSchedule(); }")
-        msg = pg.evaluate("document.getElementById('schMsg').textContent")
-        check("17 classic: '1e3' in a schedule field is refused on the page", msg == pg.evaluate("t('num_bad')"))
+        pg.evaluate("()=>{ document.getElementById('arWait').value='1e3'; return saveAutoReset(); }")
+        msg = pg.evaluate("document.getElementById('arMsg').textContent")
+        check("17 classic: '1e3' in an auto-reset field is refused on the page", msg == pg.evaluate("t('num_bad')"))
         with urllib.request.urlopen(rp.base + "/api/settings", timeout=20) as r:
             s2 = C.strict_json_loads(r.read())["settings"]
-        check("17 classic: nothing saved", s2["schedule"] == s["schedule"])
+        check("17 classic: nothing saved", s2["auto_reset"] == s["auto_reset"])
         # 22 no data: blame this device only when it is offline; no reply at all says both; an error answer = monitor
         js = "[noAnswerKey(new TypeError('x')), noAnswerKey(new DOMException('t','AbortError')), noAnswerKey(0), noAnswerKey(new SyntaxError('j'))]"
         for page in ("/classic", "/home"):

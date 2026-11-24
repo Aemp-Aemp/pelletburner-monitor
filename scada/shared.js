@@ -105,12 +105,19 @@ const lhBoiler=h=>lhT("boiler",{m:h.type!=null?LH_KW[h.type]:lhT("type_none"),v:
 // the inside of the card. c = the page's colours {warn, dim, line}, guide = the link to the guide section
 function lhHTML(h,c,guide){
   if(!h) return "";
-  const bad=lhBad(h), rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
+  const bad=lhBad(h);
+  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b id="lhTitle">${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
+    ${lhBody(h,c,guide)}</details>`;
+}
+// the inside of the card without its fold: the settings table, what to try, Copy lighting report (also used inside the
+// Time to flame row of Burner health on /home)
+function lhBody(h,c,guide){
+  if(!h) return "";
+  const rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
   const notes=[...new Set(rows.filter(r=>r.mark&&r.mark!=="diff"&&r.mark!=="unused").map(r=>r.mark))];
   const nm=r=>esc(lhT("n_"+r.id))+(r.mark==="unused"?` <span style="color:${c.dim}">(${esc(lhT("m_unused"))})</span>`:"");
   const mk=r=>!r.mark||r.mark==="unused"?"":r.mark==="diff"?` <span title="${esc(lhT("m_diff"))}" style="color:${c.dim}">●</span>`:` <b style="color:${c.warn}">!</b>`;
-  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b>${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
-    <p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
+  return `<p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
     ${any?`<div style="overflow-x:auto"><table id="lhTable" style="width:100%;border-collapse:collapse;font-size:14px"><tr>${["c_set","c_now","c_fac","c_ref"].map(k=>`<th style="${td};color:${c.dim};font-weight:600">${esc(lhT(k))}</th>`).join("")}</tr>
       ${rows.map(r=>`<tr data-id="${esc(r.id)}"${r.mark?` data-mark="${esc(r.mark)}"`:""}><td style="${td}">${nm(r)}</td><td style="${td};white-space:nowrap"><b>${esc(lhVal(r.id,r.now))}</b>${mk(r)}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.fac))}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.ref))}</td></tr>`).join("")}</table></div>
     ${notes.map(m=>`<p style="margin:8px 0 0;color:${c.warn}"><b>!</b> ${esc(lhT("m_"+m))}</p>`).join("")}
@@ -121,7 +128,7 @@ function lhHTML(h,c,guide){
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px"><button type="button" class="btn sec" data-lh="copy">${esc(lhT("copy"))}</button>
       <a class="link" href="${esc(guide)}" target="_blank" rel="noopener">${esc(lhT("guide"))}</a></div>
     <p id="lhCopyNote" style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(lhT("copy_note"))}</p>
-    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p></details>`;
+    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p>`;
 }
 // the plain text for the clipboard: boiler type, software, settings, the last starts, the monitor's version.
 // Nothing personal: no names, addresses, topics, place or pellet batch names.
@@ -148,6 +155,152 @@ function lhCopy(txt,btn){
   document.body.appendChild(ta); ta.select(); try{ if(document.execCommand("copy")) done(); }catch(e){} ta.remove();
 }
 document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="lhDet") LH_OPEN=e.target.open; },true);
+
+// ---- Burner health details: what the rows of the Burner health checklist open (/home History) and the fire
+// rescue words of the /classic suggestions. READ ONLY: the server sends codes, numbers and times; the words are here.
+const BH_TXT={
+ en:{bh_rescue:"Fire rescues", bh_rescue_none:"None in the last {d} days that burned.",
+  bh_rescue_one:"1 in the last {d} days that burned. The boiler relit it.", bh_rescue_many:"{a} in the last {d} days that burned.",
+  bh_rescue_fail:"{f} of {a} in the last {d} days that burned did not relight.",
+  rs_one:"Fire rescue on {w}: the flame went out while burning, and {o}.",
+  rs_many:"{n} fire rescues in the last {d} days that burned (since {from}). The flame went out while burning. The last ones:",
+  rs_ok:"the boiler relit it", rs_failed:"it did not relight: the boiler stopped with an alarm", rs_stopped:"the boiler stopped",
+  rs_null:"the day ended before it was over", rs_when_none:"time not saved",
+  rs_advice:"Check the pellet feed (silo, pellets stuck, auger) and clean the flame sensor.",
+  rs_period:"“The last {d} days that burned” = the days of this list that had burning; days without burning are skipped.",
+  rs_list_h:"The newest fire rescues", rs_none:"No fire rescues in the saved days.",
+  st_h:"The last {n} starts", st_none:"No starts recorded yet.", st_by:"started by {s}", st_flame:"flame after {a} min",
+  st_full:"full heat after {a} min", st_off:"off {a} h before", st_r_ok:"Lit", st_r_failed:"Did not light", st_r_stopped:"Stopped",
+  st_r_resumed:"Went on burning", st_r_relight:"Relit after a pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Went on burning = the fire was still there, so there was no lighting. It is left out of every average.",
+  st_cfg_h:"Lighting settings compared", st_cfg_n:"{n} starts, {ok} lit", st_cfg_flame:"to flame about {a} min",
+  st_cfg_full:"to full heat about {a} min", st_cfg_now:"In force now", st_cfg_none:"The settings were the same for every start.",
+  st_cfg_note:"Only the settings that differ between starts. Typical = the middle value of the starts that lit.",
+  fs_h:"Is the flame sensor dirty?", fs_band_low:"Low power (under 45 %)", fs_band_mid:"Middle power (45–70 %)", fs_band_high:"High power (70 % and up)",
+  fs_learn:"Learning: {m} of {nm} min steady burning, {b} of {nb} burns.", fs_none:"No steady burning at this power yet.",
+  fs_ready:"Usual {a}, now {c}.", fs_drop:"{p} % less light than usual.", fs_same:"As usual.",
+  fs_how:"It learns from steady burning: 5-minute stretches at an even power, from 10 minutes into a burn. A power level is ready after {nm} minutes spread over {nb} burns, so short burns add up. Readings from the saved history count too.",
+  fs_clean:"I cleaned the flame sensor", fs_clean_q:"Start learning the flame sensor’s normal level again from now?",
+  fs_cleaned:"Learning again since {d}.", fs_nofield:"No flame reading is chosen (classic page → Analysis).",
+  cc_fan:"Fan at {p} %", cc_field:"Setting {f}"},
+ da:{bh_rescue:"Redder ilden", bh_rescue_none:"Ingen i de seneste {d} dage med fyring.",
+  bh_rescue_one:"1 i de seneste {d} dage med fyring. Kedlen tændte igen.", bh_rescue_many:"{a} i de seneste {d} dage med fyring.",
+  bh_rescue_fail:"{f} af {a} i de seneste {d} dage med fyring tændte ikke igen.",
+  rs_one:"Redder ilden {w}: flammen gik ud under fyring, og {o}.",
+  rs_many:"Redder ilden {n} gange i de seneste {d} dage med fyring (siden {from}). Flammen gik ud under fyring. De seneste:",
+  rs_ok:"kedlen tændte den igen", rs_failed:"den tændte ikke igen: kedlen stoppede med en alarm", rs_stopped:"kedlen stoppede",
+  rs_null:"dagen sluttede, før den var ovre", rs_when_none:"tidspunkt ikke gemt",
+  rs_advice:"Tjek pilletilførslen (silo, piller der hænger fast, snegl) og rens flammeføleren.",
+  rs_period:"“De seneste {d} dage med fyring” = de dage på listen, hvor der blev fyret; dage uden fyring springes over.",
+  rs_list_h:"De nyeste gange", rs_none:"Ingen gange i de gemte dage.",
+  st_h:"De seneste {n} starter", st_none:"Ingen starter registreret endnu.", st_by:"startet af {s}", st_flame:"flamme efter {a} min",
+  st_full:"fuld varme efter {a} min", st_off:"slukket {a} t før", st_r_ok:"Tændte", st_r_failed:"Tændte ikke", st_r_stopped:"Stoppet",
+  st_r_resumed:"Brændte videre", st_r_relight:"Tændt igen efter pause", st_alarm:"alarm {a}",
+  st_resumed_note:"Brændte videre = ilden var der stadig, så der var ingen optænding. Den tælles ikke med i gennemsnit.",
+  st_cfg_h:"Indstillinger for optænding sammenlignet", st_cfg_n:"{n} starter, {ok} tændte", st_cfg_flame:"til flamme ca. {a} min",
+  st_cfg_full:"til fuld varme ca. {a} min", st_cfg_now:"Gælder nu", st_cfg_none:"Indstillingerne var de samme ved alle starter.",
+  st_cfg_note:"Kun de indstillinger, der er forskellige fra start til start. Typisk = midterværdien af de starter, der tændte.",
+  fs_h:"Er flammeføleren snavset?", fs_band_low:"Lav ydelse (under 45 %)", fs_band_mid:"Mellem ydelse (45–70 %)", fs_band_high:"Høj ydelse (70 % og op)",
+  fs_learn:"Lærer: {m} af {nm} min stabil fyring, {b} af {nb} fyringer.", fs_none:"Ingen stabil fyring ved denne ydelse endnu.",
+  fs_ready:"Normalt {a}, nu {c}.", fs_drop:"{p} % mindre lys end normalt.", fs_same:"Som normalt.",
+  fs_how:"Den lærer af stabil fyring: 5 minutter ad gangen ved jævn ydelse, fra 10 minutter inde i en fyring. Et ydelsesniveau er klar efter {nm} minutter fordelt på {nb} fyringer, så korte fyringer lægges sammen. Målinger fra den gemte historik tæller også med.",
+  fs_clean:"Jeg har renset flammeføleren", fs_clean_q:"Lær flammefølerens normale niveau igen fra nu?",
+  fs_cleaned:"Lærer igen siden {d}.", fs_nofield:"Der er ikke valgt en flammemåling (klassisk side → Analyse).",
+  cc_fan:"Røgsuger ved {p} %", cc_field:"Indstilling {f}"}};
+const bhT=(k,p)=>{ let s=(BH_TXT[LANG]||BH_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
+// "Tue 24 Nov 13:42" (Danish: "tirs. 24. nov. 13:42")
+const bhWhen=ep=>ep?new Date(ep*1000).toLocaleDateString(LOC(),{weekday:"short",day:"numeric",month:"short"})+" "+clock(ep):bhT("rs_when_none");
+// the boiler's own settings in plain words (EN/DA): the settings changes and the lighting settings compared
+const CC_NAMES={en:{"000":"Set point (°C)","001":"Fuel (g per hour)","002":"Air clean interval (min)","003":"Air clean time (s)",
+  "004":"Ash clean interval (g)","005":"Minimum mode stop at (%)","006":"Minimum mode pause (h)","007":"Boost 1","008":"Boost 2",
+  "009":"Auger calibration (g)","010":"Silo capacity (kg)","012":"Stepping temp. limit (°C)","013":"Pump start temperature",
+  "014":"Start fuel (s)","015":"Ignition air (%)","016":"Warm-up (s)","017":"Ignition timeout (s)","018":"Max doses",
+  "019":"Top-up dose (s)","020":"Top-up interval (s)","031":"Max power (%)","033":"Boiler type","034":"Dose size",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Software version","041":"Hardware version"},
+ da:{"000":"Kedeltemperatur (°C)","001":"Brændsel (g pr. time)","002":"Luftrens interval (min)","003":"Luftrens sugetid (s)",
+  "004":"Askerens interval (g)","005":"Minimumdrift stop ved (%)","006":"Minimumdrift pause (t)","007":"Boost 1","008":"Boost 2",
+  "009":"Snegl afvejning (g)","010":"Silo kapacitet (kg)","012":"Stepping temp. grænse (°C)","013":"Pumpe starttemperatur",
+  "014":"Tændbrændsel (s)","015":"Tænd luft (%)","016":"Opvarmning (s)","017":"Optænding timeout (s)","018":"Max doser",
+  "019":"Suplering (s)","020":"Interval mellem doser (s)","031":"Max ydelse (%)","033":"Kedeltype","034":"Dosis str.",
+  "035":"PID P","036":"PID I","037":"PID D","038":"Softwareversion","041":"Hardwareversion"}};
+const ccName=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(n) return n+" ("+f+")";
+  const k=+f; return k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10})+" ("+f+")":bhT("cc_field",{f:f}); };
+// name and unit apart: "Start fuel (s)" -> ["Start fuel","s"]
+const ccParts=f=>{ const n=(CC_NAMES[LANG]||CC_NAMES.en)[f]; if(!n){ const k=+f; return [k>=21&&k<=30?bhT("cc_fan",{p:(k-20)*10}):bhT("cc_field",{f:f}),k>=21&&k<=30?"rpm":""]; }
+  const m=n.match(/^(.*?)\s*\(([^)]*)\)$/); return m?[m[1],m[2]]:[n,""]; };
+const ccNum=x=>typeof x==="number"?fmt(x,Number.isInteger(x)?0:(Math.abs(x)<1?3:1)):String(x==null?"–":x);
+// one settings change as "Start fuel 60 → 40 s"
+const ccChange=r=>{ const [n,u]=ccParts(r.field); return n+" "+ccNum(r.old)+" → "+ccNum(r.new)+(u?" "+u:""); };
+
+// ---- fire rescues: [[epoch, "ok" / "failed" / "stopped" / null], ...] newest first
+const rsOutcome=o=>bhT("rs_"+(o||"null"));
+// the /classic suggestion and the /home detail: when, and whether the boiler relit it. p = the server's numbers
+// (n, days, from, last, ok), "this period" said in words
+function rescText(p){
+  const last=(p&&p.last)||[], n=(p&&p.n)||0;
+  if(n===1&&last.length) return bhT("rs_one",{w:bhWhen(last[0][0]),o:rsOutcome(last[0][1])})+" "+bhT("rs_advice");
+  const from=p&&p.from?new Date(p.from+"T12:00").toLocaleDateString(LOC(),{day:"numeric",month:"short"}):"—";
+  return bhT("rs_many",{n,d:(p&&p.days)||"?",from})+" "+last.map(x=>bhWhen(x[0])+" ("+rsOutcome(x[1])+")").join("; ")+". "+bhT("rs_advice");
+}
+// the list of times for the Burner health detail. c = the page's colours {warn, dim, line}
+function rescListHTML(p,c){
+  const L=(p&&p.list)||[];
+  if(!L.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("rs_none"))}</p>`;
+  return `<p style="margin:0 0 6px"><b>${esc(bhT("rs_list_h"))}</b></p><div id="rsList">${L.map(x=>`<div style="padding:7px 0;border-top:1px solid ${c.line}">
+    <b style="font-weight:600">${esc(bhWhen(x[0]))}</b><br><span style="color:${x[1]==="ok"?c.dim:c.warn}">${esc(sentenceCase(rsOutcome(x[1])))}</span></div>`).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("rs_advice"))} ${esc(bhT("rs_period",{d:p.d||0}))}</p>`;
+}
+const sentenceCase=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+
+// ---- the last starts with the settings changes between them, and the lighting settings compared (api/ignitions:
+// records, by_settings, cfg_changes). Stacked rows, so it fits a phone. by = the page's "started by" words for a record.
+function startsHTML(ign,c,by,n){
+  n=n||10;
+  const recs=((ign&&ign.records)||[]).slice(-n).reverse(), ch=((ign&&ign.cfg_changes)||[]).slice();
+  if(!recs.length) return `<p style="margin:0;color:${c.dim}">${esc(bhT("st_none"))}</p>`;
+  const mark=rows=>{ const t0=rows[0].time; return `<div class="stMark" style="padding:6px 0;border-top:1px solid ${c.line};color:${c.warn};font-size:14px">▲ ${esc(bhWhen(t0))} ${esc(rows.map(ccChange).join(", "))}</div>`; };
+  // the changes after the newest start go first, then between each start and the one before it
+  const take=(a,b)=>{ const got=ch.filter(r=>r.time>=a&&r.time<b); if(!got.length) return "";
+    const g={}; got.forEach(r=>{ const k=Math.round(r.time/60); (g[k]=g[k]||[]).push(r); });
+    return Object.keys(g).sort((x,y)=>y-x).map(k=>mark(g[k])).join(""); };
+  let h=`<p style="margin:0 0 4px"><b>${esc(bhT("st_h",{n:recs.length}))}</b></p><div id="stList">`, anyRes=false;
+  recs.forEach((r,i)=>{
+    h+=take(r.epoch, i?recs[i-1].epoch:Infinity);
+    const res=r.resumed?"resumed":r.relight&&r.result==="ok"?"relight":r.result; if(r.resumed) anyRes=true;
+    const col=res==="ok"||res==="relight"?c.ok||c.dim:res==="failed"?c.warn:c.dim, s=by?by(r):"";
+    const bits=[s?bhT("st_by",{s}):"", r.flame_min!=null&&!r.resumed?bhT("st_flame",{a:fmt(r.flame_min,1)}):"",
+      r.result==="ok"&&r.minutes!=null?bhT("st_full",{a:fmt(r.minutes,1)}):"", r.off_h!=null?bhT("st_off",{a:fmt(r.off_h,1)}):""].filter(Boolean);
+    h+=`<div class="stRow" data-res="${esc(res)}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhWhen(r.epoch))}</b> · <span style="color:${col}">${esc(bhT("st_r_"+res))}${r.alarm?" ("+esc(bhT("st_alarm",{a:r.alarm}))+")":""}</span>
+      ${bits.length?`<br><span style="color:${c.dim};font-size:14px">${esc(bits.join(" · "))}</span>`:""}</div>`; });
+  h+=`</div>`;                                       // changes before the oldest start shown are left out
+  if(anyRes) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_resumed_note"))}</p>`;
+  return h+cfgCmpHTML(ign,c);
+}
+// the lighting settings compared: per combination how many starts, how many lit, typical time to flame and to full heat
+function cfgCmpHTML(ign,c){
+  const S=(ign&&ign.by_settings)||[];
+  let h=`<p style="margin:14px 0 4px"><b>${esc(bhT("st_cfg_h"))}</b></p>`;
+  if(!S.length) h+=`<p style="margin:0;color:${c.dim}">—</p>`;
+  h+=`<div id="cfgCmp">`+S.map(s=>{ const cf=s.cfg||{}, name=Object.keys(cf).map(k=>{ const [nm,u]=ccParts(k); return nm+" "+ccNum(cf[k])+(u?" "+u:""); }).join(", ")||"—";
+    return `<div class="cfgRow"${s.now?' data-now="1"':""} style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(name)}</b>${s.now?` <span style="color:${c.ok||c.dim};font-weight:600">● ${esc(bhT("st_cfg_now"))}</span>`:""}
+      <br><span style="color:${c.dim};font-size:14px">${esc([bhT("st_cfg_n",{n:s.n,ok:s.ok}), s.flame_min!=null?bhT("st_cfg_flame",{a:fmt(s.flame_min,1)}):"", s.median_min!=null?bhT("st_cfg_full",{a:fmt(s.median_min,1)}):""].filter(Boolean).join(" · "))}</span></div>`; }).join("")+`</div>`;
+  if(S.length===1) h+=`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_none"))}</p>`;
+  return h+`<p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(bhT("st_cfg_note"))}</p>`;
+}
+
+// ---- the flame sensor per power band (api/optimiser "lux"): learned so far, or usual against now
+function luxHTML(lx,c){
+  if(!lx) return "";
+  if(lx.status==="no_field") return `<p style="margin:0;color:${c.dim}">${esc(bhT("fs_nofield"))}</p>`;
+  const B=lx.bands||{}, nm=lx.need_min||30, nb=lx.need_burns||3;
+  const row=k=>{ const b=B[k]||{}; let s, warn=false;
+    if(!b.n) s=bhT("fs_none");
+    else if(b.learning) s=bhT("fs_learn",{m:Math.min(b.min||0,nm),nm,b:Math.min(b.burns||0,nb),nb});
+    else { warn=(b.drop_pct||0)>=10; s=bhT("fs_ready",{a:fmt(b.baseline,0),c:fmt(b.current,0)})+" "+(warn?bhT("fs_drop",{p:fmt(b.drop_pct,0)}):bhT("fs_same")); }
+    return `<div class="fsRow" data-band="${k}" style="padding:7px 0;border-top:1px solid ${c.line}"><b style="font-weight:600">${esc(bhT("fs_band_"+k))}</b><br><span style="color:${warn?c.warn:c.dim};font-size:14px">${esc(s)}</span></div>`; };
+  return `<p style="margin:0 0 4px"><b>${esc(bhT("fs_h"))}</b></p><div id="fsBands">${["low","mid","high"].map(row).join("")}</div>
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(bhT("fs_how",{nm,nb}))}${lx.reset_epoch?" "+esc(bhT("fs_cleaned",{d:bhWhen(lx.reset_epoch)})):""}</p>`;
+}
 
 // ---- software update card (a Raspberry Pi with the updater, pi/pelletpi-update.sh). The monitor says which state
 // it is (api/update "view", made by burner_ext.update_info); here are the words and the buttons for both pages.

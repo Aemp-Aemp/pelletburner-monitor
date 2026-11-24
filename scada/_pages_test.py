@@ -170,6 +170,14 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
                 ok = ok and ((not at["list"] and at["back"]) if view == "phone" else (at["list"] and not at["back"] and at["on"] == f"#settings/{g}"))
                 check(f"[{lang} {view}] settings/{g}: its own page ({len(at['text'])} characters)", ok)
                 texts[("settings", g, lang)] = at["text"]
+                if g == "about" and view == "desktop":
+                    # the port the browser uses; the monitor's own port only when it differs (port 80 forwarded to it)
+                    pp = pg.evaluate("""()=>({a:pagePort({http_port:8787},""), b:pagePort({http_port:8787},"8787"), c:pagePort({},""),
+                        shown:document.querySelector('#stPane').innerText})""")
+                    want = {"en": "80 (inside: 8787)", "da": "80 (indeni: 8787)"}[lang]
+                    check(f"[{lang}] settings/about: page port as the browser uses it ({pp['a']}, {pp['b']}, {pp['c']})",
+                          pp["a"] == want and pp["b"] == "8787" and pp["c"] == "80")
+                    check(f"[{lang}] settings/about: shows this page's port {PORT}", str(PORT) in pp["shown"])
             # ---- the cards that came over from the classic page
             ctx.route("**/api/optimiser", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(OPT))
                       if route.request.method == "GET" else route.abort())
@@ -190,7 +198,7 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
             p2.wait_for_selector("#cSPD svg", timeout=15000)
             p2.wait_for_timeout(300)
             hi = p2.evaluate("""()=>({parts:document.querySelectorAll('#cSPD .bar-part').length,leg:(document.querySelector('#spdLeg')||{innerText:''}).innerText.trim(),
-                fan:[...document.querySelectorAll('#health .hc>div')].map(r=>r.innerText.trim())[2]||'',wide:document.documentElement.scrollWidth>window.innerWidth+1})""")
+                fan:[...document.querySelectorAll('#health .hc>*')].map(r=>r.innerText.trim())[2]||'',wide:document.documentElement.scrollWidth>window.innerWidth+1})""")
             check(f"[{lang} {view}] history: the short burn is a light part of its bar, with a legend", hi["parts"] == 1 and len(hi["leg"]) > 10 and not hi["wide"])
             check(f"[{lang} {view}] history: burner health has its fan line ({hi['fan'][:40]!r})", len(hi["fan"]) > 8 and "{" not in hi["fan"])
             texts[("card", "history", lang)] = hi["leg"] + hi["fan"]

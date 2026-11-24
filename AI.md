@@ -114,6 +114,7 @@ through `/api/settings`. Changes in Settings are saved at once.
   on. It uses the Pi's clock (see power cuts).
 - **Phone alerts** (Settings -> Phone alerts): install the free **ntfy** app, subscribe to the alerts topic
   shown on the page (Copy button or QR code), turn alerts on, press Send test. The topic works like a password.
+  The answer to `status` has a small picture of today's graph (on by default, can be turned off; 07:00-22:00, at most one an hour).
 - **Start/stop from the phone** (optional, off): needs alerts on and a PIN (4-6 digits). Subscribe to the
   second topic, the **command topic**. Send `start` or `stop`; the monitor answers with a one-time code; reply
   `<code> <PIN>` within 2 minutes. `status` needs no PIN. 3 wrong tries lock it for 15 minutes. A boiler in
@@ -173,6 +174,7 @@ Bug reports: see `CONTRIBUTING.md` (remove passwords, ntfy topics, addresses and
 | `burner_features.py` | Settings (`DEFAULTS`, `data/settings.json`), heating plan, pellets, ash, health, weather |
 | `burner_ext.py` | History files, MQTT / Home Assistant, `MONITOR_VERSION` |
 | `burner_notify.py` / `burner_phone.py` | Phone alerts / phone start-stop with PIN |
+| `burner_graph.py` | Today's graph as a PNG for the `status` answer (Pillow) |
 | `burner_common.py` | State and alarm names, shared helpers |
 | `scada/home.html`, `scada/dashboard.html` | The main page (`/home`) and the classic page (`/classic`) |
 | `docs/guide.html` | The user guide (`/guide`), one offline file |

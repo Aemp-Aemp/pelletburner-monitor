@@ -21,6 +21,8 @@ import burner_features as F
 CLOCK_HINT = "check the Pi's clock — a wrong clock breaks certificates"
 RATE_S = 1800                  # the same event at most once per 30 min (alarm raised / cleared: always)
 LINK_LOST_S = 300              # no fresh data from the boiler for this long = contact lost
+GRAPH_HOURS = (7, 22)          # the status picture only from 07:00 until 22:00 (local time)
+GRAPH_EVERY_S = 3600           # and at most one an hour
 _urlopen = urllib.request.urlopen     # tests replace this: no real network in a test
 
 
@@ -327,6 +329,7 @@ class SendError(Exception):
 class NtfyBackend:
     """POST <server>/<topic> with Title / Priority / Tags headers (https://docs.ntfy.sh/publish/)."""
     name = "ntfy"
+    attachments = True             # send(attach=PNG) works; a backend without this gets the text only
 
     def __init__(self, ca, timeout=15):
         self.ca, self.timeout = ca, timeout
@@ -340,16 +343,29 @@ class NtfyBackend:
             import base64
             return "=?UTF-8?B?" + base64.b64encode(s.encode("utf-8")).decode("ascii") + "?="
 
-    def send(self, server, topic, title, body, priority="default", tags="", actions=""):
-        """-> the message id the server gave (None if it gave none). actions = ntfy action buttons (header)."""
+    @staticmethod
+    def _message_header(s):
+        """The text in the Message header (when the body is a picture): RFC 2047 when not plain one-line ASCII."""
+        if "\n" in s or "\r" in s:
+            import base64
+            return "=?UTF-8?B?" + base64.b64encode(s.encode("utf-8")).decode("ascii") + "?="
+        return NtfyBackend._header(s)
+
+    def send(self, server, topic, title, body, priority="default", tags="", actions="", attach=None):
+        """-> the message id the server gave (None if it gave none). actions = ntfy action buttons (header).
+        attach = PNG bytes: sent as the body (PUT, Filename: today.png) with the text in the Message header."""
         url = f"{server.rstrip('/')}/{topic}"
-        hdr = {"Title": self._header(title), "Priority": priority, "User-Agent": "burner-monitor",
-               "Content-Type": "text/plain; charset=utf-8"}
+        hdr = {"Title": self._header(title), "Priority": priority, "User-Agent": "burner-monitor"}
         if tags:
             hdr["Tags"] = tags
         if actions:
             hdr["Actions"] = actions
-        req = urllib.request.Request(url, data=body.encode("utf-8"), headers=hdr, method="POST")
+        if attach:
+            hdr.update({"Filename": "today.png", "Message": self._message_header(body), "Content-Type": "image/png"})
+            req = urllib.request.Request(url, data=attach, headers=hdr, method="PUT")
+        else:
+            hdr["Content-Type"] = "text/plain; charset=utf-8"
+            req = urllib.request.Request(url, data=body.encode("utf-8"), headers=hdr, method="POST")
         kw = {"context": self.ca.context()} if url.startswith("https:") else {}
         try:
             with _urlopen(req, timeout=self.timeout, **kw) as r:
@@ -393,6 +409,8 @@ class Notifier:
         self.t0 = time.time()
         self.pi_on = set()             # Pi problems already told about (until they go away)
         self._pi_t = self._ash_t = 0.0
+        self._graph_t = 0.0            # when the last status picture was made (at most one an hour)
+        self.graph_clock = time.time   # tests set their own clock
         self.phone = None              # burner_phone.PhoneCommands when start / stop from the phone is set up
         self.own_ids = collections.deque(maxlen=200)   # ids of messages sent from here (never read as commands)
         self._topic_now = self.cfg().get("topic") or ""
@@ -462,6 +480,7 @@ class Notifier:
     def deliver(self, item, retries=None):
         """Send one message now (with retries and growing waits); log and drop when it keeps failing."""
         waits = self.RETRIES if retries is None else retries
+        png = self._graph(item) if getattr(self.backend, "attachments", False) else None
         for i in range(len(waits) + 1):
             c = self.cfg()
             topic = item.get("topic") or c.get("topic") or ""
@@ -471,8 +490,20 @@ class Notifier:
                 if act:
                     kw["actions"] = act
             try:
-                mid = self.backend.send(c.get("server") or "https://ntfy.sh", topic, item["title"], item["body"],
-                                        item.get("priority", "default"), item.get("tags", ""), **kw)
+                send = lambda **k: self.backend.send(c.get("server") or "https://ntfy.sh", topic, item["title"],
+                                                     item["body"], item.get("priority", "default"),
+                                                     item.get("tags", ""), **kw, **k)
+                mid = None
+                if png:
+                    try:
+                        mid = send(attach=png)
+                    except SendError as e:
+                        if e.retry:
+                            raise
+                        png = None                       # the server refused the picture: the text alone
+                        self.log(f"ntfy: picture not sent ({_scrub(str(e), topic)}); text only")
+                if not png:
+                    mid = send()
                 if mid:
                     self.own_ids.append(str(mid))
                 self._result(item["key"], True, "sent")
@@ -488,6 +519,24 @@ class Notifier:
                 self.log(f"# alerts: '{item['key']}' to {mask(topic)} failed ({msg}); new try in {waits[i]} s")
                 self.sleep(waits[i])
         return False
+
+    def _graph(self, item):
+        """Today's graph (PNG) for a message that may carry one, when the setting is on, between 07:00 and 22:00 and
+        at most once an hour; None otherwise or on any error (then the text goes alone, one log line)."""
+        if not item.get("graph") or not self.cfg().get("graph"):
+            return None
+        now = self.graph_clock()
+        if not GRAPH_HOURS[0] <= datetime.datetime.fromtimestamp(now).hour < GRAPH_HOURS[1]:
+            return None                                  # night: the text alone
+        if 0 <= now - self._graph_t < GRAPH_EVERY_S:
+            return None                                  # one picture an hour is enough
+        self._graph_t = now
+        try:
+            import burner_graph
+            return burner_graph.today_png(self.mod, self.lang())
+        except Exception as e:
+            self.log(f"ntfy: graph not made ({e.__class__.__name__}); text only")
+            return None
 
     def _result(self, key, ok, msg, kind=None):
         self.last = {"t": round(time.time()), "ok": ok, "what": key, "msg": msg, "kind": kind}

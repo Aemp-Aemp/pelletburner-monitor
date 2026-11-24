@@ -4,6 +4,24 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.4
+
+### New
+- History tab: Burner health is the hub. Time to flame, Flame sensor and the new Fire rescues row open in place: closed when all is fine, open by themselves when something needs a look.
+- Time to flame shows the last 10 starts (who started it, time to flame, time to full heat, off before), a line where a boiler setting changed between them, and the lighting settings compared with their typical time to flame. The "Trouble lighting?" help is inside it.
+- Fire rescues: when each one happened and whether the boiler relit it.
+- Phone alerts: the reply to "status" includes a picture of today's and tomorrow's graph (07:00-22:00, at most once an hour), with Danish letters.
+
+### Better
+- The flame sensor check learns from short burns (ready after about 2-3 days) and from the saved history, instead of needing 6 h of steady burning.
+- Settings → About this monitor shows the port the browser uses.
+- /classic: the old start windows and three cards that the new page already has are gone.
+
+### Fixed
+- "Off (h)" before a start is known again after a restart of the monitor.
+- A start that went on burning without lighting is no longer counted as a start in the averages.
+- GitHub's own test no longer fails on a new version number.
+
 ## 1.0.3
 
 ### New

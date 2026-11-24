@@ -154,7 +154,7 @@ mod.fan = types.SimpleNamespace(analyse=lambda: {"levels": [{"change_pct": -2.0,
 mod.ash = types.SimpleNamespace(feed=lambda: {"turn_hist": [[i, 6.0] for i in range(12)], "problem": None})
 hh = F.Optimiser(Settings({}), None, mod, log).health(days=days7)
 ch, tf7 = hh["checks"], next(i for i in hh["items"] if i["key"] == "to_flame")
-check("checklist: the five checks, in order", [c["k"] for c in ch] == ["light", "flame", "fan", "ash", "short"])
+check("checklist: the six checks, in order", [c["k"] for c in ch] == ["light", "flame", "fan", "ash", "short", "rescue"])
 check("checklist: time to flame shows the judged value (last 3 starts), not only the newest",
       ch[0] == {"k": "light", "st": "ok", "why": "ok", "p": {"a": tf7["now"], "usual": 4.5}})
 check("checklist: flame, fan and ash plate as usual", [c["st"] for c in ch[1:4]] == ["ok", "ok", "ok"]

@@ -26,7 +26,8 @@ PATHS = {"status": "/status.json", "settings": "/api/settings", "optimiser": "/a
 SKIP_KEYS = {"generated",           # insights.json: the PC's real time when the cards were built
              "topic",               # settings.ntfy.topic: a new random secret each run; never saved in a file
              "cmd_topic",           # settings.ntfy.cmd_topic (phone commands): the same
-             "uptime", "rx_age"}    # status.json: seconds by the PC's own monotonic clock (the updater's "quiet" rule)
+             "uptime", "rx_age",   # status.json: seconds by the PC's own monotonic clock (the updater's "quiet" rule)
+             "version"}            # status.json: the release number changes with every release
 LONG = 40                           # keeps the saved files small
 
 

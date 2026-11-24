@@ -192,6 +192,7 @@ DEFAULTS = {
     # owner's page through /api/settings (Settings.public()), never to logs, MQTT or ntfy. burner_phone.py does the rest.
     "ntfy": {"enabled": False, "server": "https://ntfy.sh", "topic": "", "lang": "",
              "events": {k: on for k, on in NTFY_EVENTS}, "silo_low_kg": 50, "daily_at": "20:00",
+             "graph": True,           # today's graph (PNG, burner_graph.py) with the "status" answer
              "cmd_enabled": False, "cmd_topic": "", "cmd_pin_hash": "", "cmd_pin": ""},
     # what the board does not send, typed in once by the owner for the "Picture for service" (never sent to the
     # boiler): software version (the board reports 0), MIN YDELSE %, fan rpm at 100 % (SUGER INDSTILLING)
@@ -331,6 +332,10 @@ class Settings:
                     d["last_attempt"] = st["last_attempt"]
                 if isinstance(st.get("attempts"), list):
                     d["attempts"] = [x for x in st["attempts"] if isinstance(x, (int, float))][-20:]
+        if self.data["schedule"].get("enabled"):       # the old start windows have no page any more: turned off once
+            self.data["schedule"]["enabled"] = False
+            log("# settings: the old start windows were on; turned off (the heating plan on /home starts the boiler now)")
+            self.save()
         if not self.data["ntfy"].get("topic"):         # phone alerts: the secret topic is made once and kept
             self.data["ntfy"]["topic"] = new_ntfy_topic()
             self.save()
@@ -547,6 +552,8 @@ class Settings:
                     if not _HHMM.match(str(s["daily_at"] or "")):
                         return False, "daily_at must be HH:MM"
                     d["daily_at"] = str(s["daily_at"]).zfill(5)
+                if "graph" in s:
+                    d["graph"] = bool(s["graph"])
                 for k, on in NTFY_EVENTS:                # a settings file from before a new event: its default
                     d.setdefault("events", {}).setdefault(k, on)
                 if d["enabled"] and not d.get("topic"):
@@ -1085,6 +1092,8 @@ class IgnitionLog:
                     r["source"] = s
         if not self.records and data_dir:            # first run: rebuild from the saved history rows
             self._rebuild(data_dir)
+        elif data_dir:                               # after a restart: when the last burn ended (for "off for h")
+            self.last_burn_end = last_burn_end(data_dir)
         self.cur = None
         tracker.listeners.append(self._on_event)
 
@@ -1220,10 +1229,24 @@ class IgnitionLog:
     def reset(self):
         self.settings.set_internal("ignitions", "since", time.time())
 
+    def cfg_changes(self, recs, n=10):
+        """The boiler's own settings changes (data/cfg_changes.jsonl) since the oldest of the last n starts, oldest
+        first, at most 40: the starts list puts a line between the starts where a setting changed."""
+        hist = getattr(self.mod, "cfg_hist", None)
+        path = getattr(hist, "path", None)
+        if not recs or not path:
+            return []
+        t0 = recs[-n:][0]["epoch"]
+        rows = [r for r in rows_of(path) if isinstance(r.get("time"), (int, float)) and r["time"] >= t0
+                and isinstance(r.get("field"), str)]
+        return [{k: r.get(k) for k in ("time", "field", "old", "new")} for r in rows][-40:]
+
     def report(self):
         since = (self.settings.get("ignitions") or {}).get("since") or 0
         # each record also carries flame_min (minutes to flame, see the class text): the pages show that value
-        recs = [dict(r, flame_min=flame_min(r)) for r in self.records if r["epoch"] >= since][-500:]
+        # resumed = went on burning without lighting (see resumed()): marked, and left out of the comparisons
+        recs = [dict(r, flame_min=flame_min(r), **({"resumed": True} if resumed(r) else {}))
+                for r in self.records if r["epoch"] >= since][-500:]
         # batch names that differ only in case / spaces are one batch, shown with the first spelling
         # (only here, for the pages: the stored settings and records keep what was typed)
         batches = (self.settings.get("pellets") or {}).get("batches") or []
@@ -1263,27 +1286,61 @@ class IgnitionLog:
             light_help = None
         # same comparison per ignition-settings combination (what helps ignition?)
         by_cfg = {}
-        withcfg = [r for r in recs if not r.get("relight") and r.get("cfg")]
+        withcfg = [r for r in recs if not r.get("relight") and not r.get("resumed") and r.get("cfg")]
         # only the settings that actually differ between attempts are shown (the rest is the same everywhere)
         vary = [k for k in IGN_CFG if len({str(r["cfg"].get(k)) for r in withcfg}) > 1] or list(IGN_CFG)[:1]
+        raw_now = (getattr(self.mod, "latest_cfg", None) or {}).get("raw") or {}
         for r in withcfg:
             key = " · ".join(f"{IGN_CFG[k]} {r['cfg'].get(k, '?')}" for k in vary)
-            s = by_cfg.setdefault(key, {"n": 0, "ok": 0, "minutes": []})
+            s = by_cfg.setdefault(key, {"n": 0, "ok": 0, "minutes": [], "flame": [],
+                                        "cfg": {k: r["cfg"].get(k) for k in vary}})
             s["n"] += 1
             if r["result"] == "ok":
                 s["ok"] += 1
                 s["minutes"].append(r["minutes"])
+                if lit(r):
+                    s["flame"].append(flame_min(r))
+        # median_min = typical time to full heat (start -> RUNNING), flame_min = typical time to flame,
+        # cfg = the values of the settings that differ, now = the settings the boiler has now
         settings = [{"settings": k, "n": v["n"], "ok": v["ok"],
-                     "median_min": round(statistics.median(v["minutes"]), 1) if v["minutes"] else None}
+                     "median_min": round(statistics.median(v["minutes"]), 1) if v["minutes"] else None,
+                     "flame_min": round(statistics.median(v["flame"]), 1) if v["flame"] else None, "cfg": v["cfg"],
+                     "now": bool(raw_now) and all(str(raw_now.get(c)) == str(x) for c, x in v["cfg"].items())}
                     for k, v in by_cfg.items()]
         settings.sort(key=lambda s: (-(s["ok"] / s["n"]), s["median_min"] if s["median_min"] is not None else 1e9))
         out = {"records": recs, "batches": batches, "current_batch": show(self.batch_now()), "stats": stats,
                "by_settings": settings, "typical_flame_min": typ, "typical_flame_n": typ_n,
-               "typical_days": TYPICAL_DAYS, "help": light_help}
+               "typical_days": TYPICAL_DAYS, "help": light_help, "cfg_changes": self.cfg_changes(recs)}
         if bsince:     # the boiler type changed: "usual" = starts after it (use), or older starts until 3 (old)
             out["baseline"] = {"since": bsince, "why": (self.settings.get("baseline") or {}).get("why") or "",
                                "use": not older, "old": older}
         return out
+
+
+def last_burn_end(data_dir, files=3):
+    """When the last burn ended (epoch): the newest change from running / pause / fire rescue to stopped / waiting /
+    alarm in the newest saved day files, or None. Read once at start, so the first start after a restart of the
+    monitor still knows how long the boiler was off."""
+    for _, p in reversed(hist_files(data_dir)[-files:]):
+        prev, end = None, None
+        for r in rows_of(p):
+            st = _int(r.get("state"))
+            if st is None or not r.get("epoch"):
+                continue
+            if prev in (4, 5, 7) and st in (0, 1, 6):
+                end = r["epoch"]
+            prev = st
+        if end:
+            return end
+    return None
+
+
+def resumed(rec):
+    """A start that went on burning without lighting: it reached RUNNING with no lighting step (IGNITION) in under
+    2 minutes, so the fire was still there (a start right after a stop, or the boiler picking up its own fire).
+    Not a real lighting: left out of every time to flame, lighting verdict and average, like a relight."""
+    return (rec.get("result") == "ok" and not rec.get("relight") and rec.get("ignition_min") == 0
+            and rec.get("minutes") is not None and rec["minutes"] < 2)
 
 
 def flame_min(rec):
@@ -1295,7 +1352,8 @@ def flame_min(rec):
 
 def lit(rec):
     """A start that reached RUNNING and has a time to flame (a relight whose flame was still on is no lighting)."""
-    return rec.get("result") == "ok" and rec.get("flame_s") is not None and not (rec.get("relight") and rec.get("flame_s") == 0)
+    return (rec.get("result") == "ok" and rec.get("flame_s") is not None and not (rec.get("relight") and rec.get("flame_s") == 0)
+            and not resumed(rec))
 
 
 TYPICAL_DAYS = 28                  # "typical" = the median of the starts that lit in the last 4 weeks ...
@@ -1407,7 +1465,7 @@ def lighting_help(records, cfg_raw, sw=None, usual=None, sync=False):
             elif fac is not None and abs(now - fac) > 1e-9:
                 mark = "diff"
         rows.append({"id": k, "now": now, "fac": fac, "ref": LIGHT_WORKED.get(k), "mark": mark})
-    last = [r for r in records if not r.get("relight")][-LIGHT_LAST_N:]
+    last = [r for r in records if not r.get("relight") and not resumed(r)][-LIGHT_LAST_N:]
     judged = [r for r in last if r.get("result") in ("ok", "failed")]
     failed = sum(1 for r in judged if r["result"] == "failed")
     mins = [flame_min(r) for r in judged if lit(r)]
@@ -1480,7 +1538,12 @@ def _load_samples(path, keep):
 
 # ============================================================================ LUX fouling
 BANDS = ((0, 45, "low"), (45, 70, "mid"), (70, 1000, "high"))
-RUN_WINDOW = 28 * 24 * 6        # samples = 10 min of steady running each -> 4 weeks of RUNNING time
+LUX_WIN_S = 300                 # one sample per 5 min of steady burning
+LUX_SETTLE_S = 600              # ... once the boiler has been in DRIFT for 10 min (the flame has settled)
+LUX_READY_MIN = 30              # a power band is ready with 30 min of steady burning (6 samples) ...
+LUX_READY_BURNS = 3             # ... from at least 3 different burns
+LUX_V = 2                       # sample format: 5 min samples with the burn they belong to
+RUN_WINDOW = 28 * 24 * 12       # samples = 5 min of steady running each -> 4 weeks of RUNNING time
 
 
 def _band(p):
@@ -1490,12 +1553,55 @@ def _band(p):
     return "high"
 
 
+def lux_sample(win, now, drift_since):
+    """One flame-sensor sample from the rows of the last LUX_WIN_S seconds, or None when the burning was not steady:
+    in DRIFT for LUX_SETTLE_S, every row DRIFT with a flame reading, power within +-5 %-points, fan rpm within
+    +-3 %, boiler temperature change <= 1 C. burn = when that DRIFT began (samples of one burn share it)."""
+    if not drift_since or now - drift_since < LUX_SETTLE_S:
+        return None
+    if len(win) < 5 or any(_int(r.get("state")) != 4 or r.get("flame") is None for r in win):
+        return None
+    pw = [_f(r.get("power_pct")) for r in win]
+    rpm = [_f(r.get("fan_rpm")) for r in win if _f(r.get("fan_rpm"))]
+    bt = [_f(r.get("boiler_c")) for r in win if _f(r.get("boiler_c")) is not None]
+    if None in pw or max(pw) - min(pw) > 10:
+        return None
+    if rpm and (max(rpm) - min(rpm)) > 0.06 * statistics.mean(rpm):
+        return None
+    if bt and abs(bt[-1] - bt[0]) > 1.0:
+        return None
+    p = statistics.median(pw)
+    return {"epoch": now, "lux": round(statistics.median(_f(r["flame"]) for r in win), 1), "power": round(p, 1),
+            "band": _band(p), "burn": int(drift_since), "v": LUX_V}
+
+
+def lux_samples_from_rows(rows):
+    """The samples the live monitor would have taken from these saved rows (oldest first)."""
+    out, win = [], collections.deque()
+    prev, since, last = None, None, 0.0
+    for r in rows:
+        e, st = r.get("epoch"), _int(r.get("state"))
+        if not e or st is None:
+            continue
+        if st != prev:
+            since, prev = (e if st == 4 else None), st
+        win.append(r)
+        while win and win[0]["epoch"] < e - LUX_WIN_S:
+            win.popleft()
+        if st == 4 and e - last >= LUX_WIN_S:
+            x = lux_sample(list(win), e, since)
+            if x:
+                out.append(x)
+                last = e
+    return out
+
+
 class LuxMonitor:
-    """Takes one sample per 10 min of *steady* DRIFT: in DRIFT >= 15 min, and over the last 10 min power
-    within +-5 %-points, fan rpm within +-3 %, boiler temp change <= 1 C. The baseline per power band is
-    the median of the samples from the last 4 weeks of running time (summer stand-still doesn't count),
-    excluding the newest hour. After a reset (service / sensor cleaned) it learns again for 6 h of steady
-    running per band before it warns."""
+    """Takes one sample per 5 min of *steady* DRIFT (lux_sample). The usual level per power band is the median of
+    its samples from the last 4 weeks of running time (summer stand-still doesn't count), without the newest 3.
+    A band is ready after LUX_READY_MIN minutes of steady burning spread over LUX_READY_BURNS burns: short burns
+    add up, so with 1-2 h burns it is ready in 2-3 days. On the first start with this format it learns from the
+    saved history (hist-*.jsonl). "Sensor cleaned" (reset) starts again from that moment; no warnings meanwhile."""
 
     def __init__(self, settings, tracker, data_dir, log, emit):
         self.settings, self.tracker, self.log, self.emit = settings, tracker, log, emit
@@ -1503,31 +1609,36 @@ class LuxMonitor:
         self.warned = set()
         self.result = None
         self.samples = _load_samples(self.path, 3 * RUN_WINDOW)
+        if data_dir and (not self.samples or any(x.get("v") != LUX_V for x in self.samples)):
+            self._learn_saved(data_dir)
         self.last_sample = self.samples[-1]["epoch"] if self.samples else 0.0
+
+    def _learn_saved(self, data_dir):
+        """Learn from the saved day files (the last 5 weeks): once, when there are no samples of this format yet."""
+        try:
+            got = lux_samples_from_rows(r for _, p in hist_files(data_dir)[-35:] for r in rows_of(p))
+        except Exception as e:                  # never stops the monitor from starting
+            self.log(f"# flame sensor: could not learn from the saved history ({e!r})")
+            return
+        if not got:
+            return
+        self.samples = got[-3 * RUN_WINDOW:]
+        try:
+            write_text_atomic(self.path, "".join(json.dumps(x) + "\n" for x in self.samples))
+        except OSError:
+            pass
+        self.log(f"# flame sensor: learned {len(self.samples)} steady 5-min samples from the saved history")
 
     def on_row(self, row, hist):
         if row.get("flame") is None or _int(row.get("state")) != 4:
             return
         now = row["epoch"]
-        if now - self.last_sample < 600:
+        if now - self.last_sample < LUX_WIN_S:
             return
-        if not self.tracker.since or now - self.tracker.since < 15 * 60:
+        win = [r for r in hist if r.get("epoch") and now - LUX_WIN_S <= r["epoch"] <= now]
+        s = lux_sample(win, now, self.tracker.since)
+        if not s:
             return
-        win = [r for r in hist if r.get("epoch") and now - 600 <= r["epoch"] <= now]
-        if len(win) < 5 or any(_int(r.get("state")) != 4 or r.get("flame") is None for r in win):
-            return
-        pw = [_f(r.get("power_pct")) for r in win]
-        rpm = [_f(r.get("fan_rpm")) for r in win if _f(r.get("fan_rpm"))]
-        bt = [_f(r.get("boiler_c")) for r in win if _f(r.get("boiler_c")) is not None]
-        if None in pw or max(pw) - min(pw) > 10:
-            return
-        if rpm and (max(rpm) - min(rpm)) > 0.06 * statistics.mean(rpm):
-            return
-        if bt and abs(bt[-1] - bt[0]) > 1.0:
-            return
-        lux = statistics.median(_f(r["flame"]) for r in win)
-        p = statistics.median(pw)
-        s = {"epoch": now, "lux": round(lux, 1), "power": round(p, 1), "band": _band(p)}
         self.samples.append(s)
         self.samples = self.samples[-3 * RUN_WINDOW:]
         self.last_sample = now
@@ -1545,8 +1656,10 @@ class LuxMonitor:
         cfg = self.settings.get("lux")
         ff = self.settings.get("flame_field")
         use = [s for s in self.samples if s["epoch"] >= (cfg.get("reset_epoch") or 0)][-RUN_WINDOW:]
+        per_h = 3600 / LUX_WIN_S
         out = {"flame_field": ff, "samples": use, "bands": {}, "warnings": [], "status": "ok",
-               "running_h": round(len(use) / 6, 1), "reset_epoch": cfg.get("reset_epoch") or 0}
+               "running_h": round(len(use) / per_h, 1), "reset_epoch": cfg.get("reset_epoch") or 0,
+               "need_min": LUX_READY_MIN, "need_burns": LUX_READY_BURNS}
         if not ff:
             out["status"] = "no_field"
         elif not use:
@@ -1556,10 +1669,15 @@ class LuxMonitor:
         pos = {id(s): i for i, s in enumerate(use)}
         for name in ("low", "mid", "high"):
             bs = [s for s in use if s["band"] == name]
-            b = {"n": len(bs), "baseline": None, "current": None, "drop_pct": None, "learning": len(bs) < 36}
-            if len(bs) >= 36:
+            burns = len({s.get("burn") or datetime.date.fromtimestamp(s["epoch"]).isoformat() for s in bs})
+            mins = round(len(bs) * LUX_WIN_S / 60)
+            ready = mins >= LUX_READY_MIN and burns >= LUX_READY_BURNS
+            # min / burns = how far it has learned (the pages show "x of 30 min, y of 3 burns")
+            b = {"n": len(bs), "min": mins, "burns": burns, "baseline": None, "current": None, "drop_pct": None,
+                 "learning": not ready}
+            if ready:
                 learning = False
-                base = statistics.median(s["lux"] for s in bs[:-6])
+                base = statistics.median(s["lux"] for s in bs[:-3])
                 cur = statistics.median(s["lux"] for s in bs[-3:])
                 b.update(baseline=round(base, 1), current=round(cur, 1),
                          drop_pct=round(100 * (1 - cur / base), 1) if base else None)
@@ -1570,7 +1688,7 @@ class LuxMonitor:
                     b["saturated"] = True
                 if base:
                     for s in bs:
-                        norm.append((pos[id(s)] / 6.0, s["lux"] / base))
+                        norm.append((pos[id(s)] / per_h, s["lux"] / base))
             out["bands"][name] = b
             if b["current"] is not None and b["current"] < cfg["low_abs"]:
                 out["warnings"].append({"kind": "low", "band": name, "p": {"lux": round(b["current"])},
@@ -1606,6 +1724,12 @@ class LuxMonitor:
             self.warned &= {w["kind"] + w.get("band", "") for w in out["warnings"]}
         self.result = out
         return out
+
+    def summary(self):
+        """The per-band table for the pages (Burner health -> Flame sensor), without the samples."""
+        r = self.analyse()
+        return {k: r[k] for k in ("status", "bands", "warnings", "running_h", "reset_epoch", "need_min", "need_burns",
+                                  "flame_field")}
 
 
 # ============================================================================ fan bearing wear (beta, recording only)
@@ -1671,7 +1795,7 @@ class FanMonitor:
 
 
 # ============================================================================ optimiser
-SUMMARY_VERSION = 4
+SUMMARY_VERSION = 5
 ALARM_HINTS = {2: "thermo switch: check burner plug/cable and for burn-back",
                4: "ignition failed: check igniter, start fuel (TÆNDBRÆNDSEL) and the flame sensor",
                5: "fire rescue failed: check pellets (silo/bridging), auger and the flame sensor",
@@ -1683,7 +1807,9 @@ ALARM_HINTS = {2: "thermo switch: check burner plug/cable and for burn-back",
 def summarise_rows(rows):
     """One day's history rows -> summary dict."""
     rows = sorted((r for r in rows if r.get("epoch")), key=lambda r: r["epoch"])
-    s = {"v": SUMMARY_VERSION, "state_s": {}, "starts": 0, "runs": [], "rescues": 0, "alarms": {},
+    # rescue_at: each fire rescue as [epoch, how it ended]: "ok" (burning again), "failed" (alarm), "stopped",
+    # or None while the day ends in the rescue
+    s = {"v": SUMMARY_VERSION, "state_s": {}, "starts": 0, "runs": [], "rescues": 0, "rescue_at": [], "alarms": {},
          "fuel_silo_kg": 0.0, "fuel_est_kg": 0.0, "running_s": 0.0, "drift_power": [], "rows": len(rows),
          "flame_power": {}}
     run_start, run_burned = None, False
@@ -1725,6 +1851,9 @@ def summarise_rows(rows):
                     run_burned = True              # only starts that really burned count as a "run"
                 if st == 7:
                     s["rescues"] += 1
+                    s["rescue_at"].append([round(r["epoch"]), None])
+                elif pst == 7 and s["rescue_at"] and s["rescue_at"][-1][1] is None:
+                    s["rescue_at"][-1][1] = "ok" if st == 4 else "failed" if st == 6 else "stopped"
                 if st == 6:
                     al = str(_int(r.get("alarm"), 0))
                     s["alarms"][al] = s["alarms"].get(al, 0) + 1
@@ -1780,6 +1909,19 @@ SHORT_BURN_MIN = 30                 # a burn shorter than this (minutes from run
 def short_burns(runs):
     """How many of these burns (minutes each, None = unknown) were short."""
     return sum(1 for r in (runs or []) if r is not None and r < SHORT_BURN_MIN)
+
+
+def rescue_list(days):
+    """All fire rescues of these day summaries, newest first: [[epoch, "ok" / "failed" / "stopped" / None], ...].
+    A day summary from before the times were kept counts its rescues with no time ([None, None])."""
+    out = []
+    for d in days:
+        at = d.get("rescue_at")
+        out += [list(x) for x in at] if isinstance(at, list) else [[None, None]] * (d.get("rescues") or 0)
+    return sorted(out, key=lambda x: x[0] or 0, reverse=True)
+
+
+RESCUE_DAYS = 7                     # the Fire rescues check looks at the last 7 days that burned
 
 
 def day_numbers(s, corr=1.0):
@@ -1968,7 +2110,8 @@ class Optimiser:
         running. Each check says "learning" until there is enough of its own data."""
         cleaned = (self.settings.get("health") or {}).get("cleaned_at") or 0
         ig = getattr(self.mod, "ignitions", None)
-        recs = [r for r in (list(ig.records) if ig else []) if (r.get("epoch") or 0) >= cleaned and not r.get("relight")]
+        recs = [r for r in (list(ig.records) if ig else [])
+                if (r.get("epoch") or 0) >= cleaned and not r.get("relight") and not resumed(r)]
         # the boiler type changed: lighting is judged against the starts since then (older ones until 3 lit)
         ok = [r for r in baseline_split(recs, baseline_since(self.settings))[0] if lit(r)]
         items = []
@@ -2091,6 +2234,18 @@ class Optimiser:
             out.append({"k": "short", "st": "bad", "why": "bad", "p": {"a": sh, "n": len(runs)}})
         else:
             out.append({"k": "short", "st": "ok", "why": "ok"})
+        burnt = [d for d in (days or []) if (d.get("running_s") or 0) > 0]
+        resc = rescue_list(burnt[-RESCUE_DAYS:])
+        failed = sum(1 for x in resc if x[1] == "failed")
+        # fire rescues: the boiler lost the flame while burning and tried to relight it. One that worked is "ok" (noted);
+        # one that ended in an alarm, or 2 or more in a week, is worth a look. list = the newest 10 of all the days
+        rp = {"a": len(resc), "f": failed, "d": len(burnt[-RESCUE_DAYS:]), "list": rescue_list(burnt)[:10]}
+        if not burnt:
+            out.append({"k": "rescue", "st": "learn"})
+        elif failed or len(resc) >= 2:
+            out.append({"k": "rescue", "st": "bad", "why": "fail" if failed else "many", "p": rp})
+        else:
+            out.append({"k": "rescue", "st": "ok", "why": "one" if resc else "none", "p": rp})
         return out
 
     def report_days(self):
@@ -2125,8 +2280,17 @@ class Optimiser:
         per_day = self.per_day()
         return {"days": days, "suggestions": self.suggest(days, per_day), "reset_epoch": reset, "per_day": per_day,
                 "flame_power": flame_by_power(days), "stock": self.pellet_stock(), "ash": self.ash_status(),
-                "health": self._safe_health(days),
+                "health": self._safe_health(days), "lux": self._lux(),
                 "window": "last 28 days with burning (idle days are skipped)"}
+
+    def _lux(self):
+        """The flame sensor's per-band table (Burner health -> Flame sensor), or None."""
+        lux = getattr(self.mod, "lux", None)
+        try:
+            return lux.summary() if lux else None
+        except Exception as e:                      # never breaks the report
+            self.log(f"# flame sensor error: {e!r}")
+            return None
 
     def _safe_health(self, days):
         try:
@@ -2163,8 +2327,13 @@ class Optimiser:
                         f"See 'Short runs'; a longer PAUSE also reduces starts."})
         resc = sum(d["rescues"] for d in ran)
         if resc:
-            out.append({"level": "warn", "key": "rescues", "p": {"n": resc}, "title": "Fire rescues",
-                "text": f"{resc} fire rescue(s) in the period: the flame was lost while burning. "
+            # "the period" = the burning days of this report (up to 28, idle days skipped): from day `from`, `days` days.
+            # last = the newest 3 rescues [epoch, "ok" / "failed" / "stopped" / None], newest first; ok = how many worked
+            at = rescue_list(ran)
+            p = {"n": resc, "days": len(ran), "from": ran[0].get("day"), "last": at[:3],
+                 "ok": sum(1 for x in at if x[1] == "ok")}
+            out.append({"level": "warn", "key": "rescues", "p": p, "title": "Fire rescues",
+                "text": f"{resc} fire rescue(s) in the last {len(ran)} burning days: the flame was lost while burning. "
                         f"Check pellet feed (silo, bridging, auger) and clean the flame sensor."})
         alarms = {}
         for d in ran:
