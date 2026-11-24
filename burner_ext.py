@@ -17,7 +17,7 @@ from burner_common import (STATE_LABELS, STATE_WORDS, ALARM_TEXT, SOURCES, iso a
                            rows_of, read_json, write_json_atomic, parse_jsonl_line, open_append,
                            write_failed, write_ok, append_jsonl)
 
-MONITOR_VERSION = "1.0.5"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
+MONITOR_VERSION = "1.0.6"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
 
 # ============================================================================ who started / stopped it
 # SOURCES (burner_common) is the one table of "source" names: the `source` field on a start / stop event

@@ -1,4 +1,4 @@
-"""Run every test (scada/_*_test.py), one after the other, and print one line per test and a summary.
+"""Run every test (scada/_*_test.py and pi/_*_test.py), one after the other, and print one line per test and a summary.
 
     py scada\\run_tests.py              all tests
     py scada\\run_tests.py insights     only tests with "insights" in the name
@@ -39,7 +39,9 @@ def main():
 
 
 def run(words, env):
+    # scada/_*_test.py and the Pi scripts' own tests in pi/_*_test.py
     tests = [p for p in sorted(glob.glob(os.path.join(HERE, "_*_test.py")))
+             + sorted(glob.glob(os.path.join(os.path.dirname(HERE), "pi", "_*_test.py")))
              if not words or any(w in os.path.basename(p) for w in words)]
     count = {"PASS": 0, "FAIL": 0, "SKIP": 0}
     notes, t_all = [], time.time()

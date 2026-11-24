@@ -116,7 +116,7 @@ check(re.search(r"^AUTO_UPDATE=yes$", st, re.M), "settings.txt: AUTO_UPDATE=yes 
 # ---------------------------------------------------------------- updater: the safety rules
 up = rd("pi/pelletpi-update.sh").decode()
 check("0 | 1) return 0" in up, "updater: swap must be gated on burner state 0 or 1")
-check(0 < up.find("if ! dc build") < up.find("until safe_now; do") < up.rfind("dc up -d"),
+check(0 < up.find('"$BUILD_TIMEOUT" "${DC[@]}" build') < up.rfind("until safe_now; do") < up.rfind("dc up -d"),
       "updater: must build, then wait for the burner, then swap")
 check("START_TRIES=24" in up and "STEP=5" in up and 'seq 1 "$START_TRIES"' in up, "updater: 2-minute health check missing")
 check("LINK_TRIES=60" in up and "WHY=boiler" in up and "WHY=settings" in up, "updater: boiler link / settings test missing")
@@ -127,7 +127,8 @@ check("back_to_old" in up and 'docker tag "$OLD_IMAGE"' in up, "updater: rollbac
 check("bad-$LATEST" in up, "updater: a failed version must not be retried")
 check("AUTO_UPDATE" in up and "flock" in up, "updater: off switch or lock missing")
 check(re.search(r"\^v\[0-9\]", up), "updater: only release tags")
-check("rm -rf" not in up and "clean -" not in up, "updater: must not delete files (the data folder stays)")
+check(all(l.strip() == 'rm -rf "$APP/.git"' for l in up.splitlines() if "rm -rf" in l and not l.strip().startswith("#"))
+      and "clean -" not in up, "updater: must not delete files (the data folder stays; only a half-made .git may go)")
 resp = rd("burner_responder.py").decode()
 check('"/api/update"' in resp and '"/api/update/check"' in resp and '"/api/update/back"' in resp,
       "responder: /api/update routes missing")

@@ -4,6 +4,14 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.6
+
+### Better
+- New guide pictures (made from the demo), including Burner health and the update card.
+- /classic Overview: the temperature control line says PID with P, I and D and the factory values.
+- /home: a little more room under the big boiler number.
+- The Pi tests run with all the other tests.
+
 ## 1.0.5
 
 ### Fixed

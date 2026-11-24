@@ -77,6 +77,10 @@ It runs offline. Only the optional outside temperature uses the internet (Open-M
 |---|---|
 | ![Settings: the list of groups, with one group open](docs/images/home-settings.jpg) | <img src="docs/images/phone-settings.jpg" alt="Settings on a phone: the list of groups" width="260"> |
 
+| Burner health (History), one row open | Software update (Settings → About this monitor) |
+|---|---|
+| ![Burner health with Time to flame open](docs/images/burner-health.jpg) | ![The update card](docs/images/update-card.jpg) |
+
 ## What you need
 
 - A Raspberry Pi 4 (or any Linux PC) with Docker
