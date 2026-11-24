@@ -126,7 +126,7 @@ def serve_and_save(state, port=0, host=None):
     s = orig_serve(state, 0, "127.0.0.1")
 
     def press():
-        time.sleep(0.2)
+        threading.Event().wait(0.2)   # real time: time.sleep is replaced by a no-op above
         answers["device status"] = (0, "wlan0:wifi:connected:" + w.HOME_CON + "\n")
         state.request = ("Net A", "pw", False)
         state.saved.set()

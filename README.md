@@ -1,5 +1,14 @@
 # Pellet burner monitor
 
+**Start here**
+
+- **You need:** a Raspberry Pi 4 (2 GB is enough) with power supply and SD card (16 GB or more), a USB-to-serial
+  adapter for the boiler's module port, and boiler software 1.30 or newer (1.40 / 1.41 tested).
+- **Install:** write the card with Raspberry Pi Imager, unzip **`pelletpi-card.zip`** from the
+  [newest release](../../releases/latest) onto it, put it in the Pi, connect the boiler, wait 15 minutes,
+  open **http://pelletpi.local**. The steps are just below.
+- **Help:** the full guide is [`docs/guide.html`](docs/guide.html). Using an AI assistant? Let it read [`AI.md`](AI.md).
+
 > **Using an AI assistant** (ChatGPT, Claude, Copilot ...) to install it? Let it read [`AI.md`](AI.md) first.
 
 ## Easy install (Raspberry Pi, no typing)
@@ -18,9 +27,10 @@ open http://pelletpi.local while it installs, or put the card in a PC and open `
 Every night it installs a new release by itself, but only while the burner is off or waiting
 (turn off: `AUTO_UPDATE=no` in `pelletpi/settings.txt`). Details and the untested parts: [`pi/README.md`](pi/README.md).
 
-**Updating from the page.** Settings → About this monitor → **Check for update** checks, downloads and installs
-the newest release, also when the nightly update is off. No internet at the boiler: turn on your phone's hotspot
-(a Wi-Fi the Pi knows), press the button, wait until the page says the download is done, turn the hotspot off.
+**Updating from the page.** Settings → About this monitor → **Check for update** looks for a new release; if there
+is one, press **Install** (also works when the nightly update is off). The switch *Automatic updates at night*
+turns the nightly update on or off. No internet at the boiler: turn on your phone's hotspot (a Wi-Fi the Pi knows),
+press Check and Install, wait until the page says the download is done, turn the hotspot off.
 The new version is tested after the swap (it starts, shows data, reads the settings, the boiler connects again);
 if not, the Pi goes back to the old version by itself. For 14 days there is also a **Go back** button. Settings
 and history are kept. More in the guide, "Updating". Not tested on a real Pi yet.

@@ -1,0 +1,35 @@
+# On every release tag (v1.2.3, also v1.2.3-rc1): build the ready SD card zip from that tag and attach it to the
+# GitHub release, so "pelletpi-card.zip from the newest release" (README, Start here) is always there.
+# The release itself may be made by hand right after the tag is pushed; this job waits for it, or makes a plain one.
+name: card
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build pelletpi-card.zip
+        run: python scripts/make_card.py --ref "$GITHUB_REF_NAME" --out dist
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break; sleep 20; done
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+            gh release create "$GITHUB_REF_NAME" --title "${GITHUB_REF_NAME#v}" --notes "See CHANGELOG.md." $pre
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/pelletpi-card.zip --clobber
