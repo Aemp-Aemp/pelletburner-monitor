@@ -17,7 +17,7 @@ from burner_common import (STATE_LABELS, STATE_WORDS, ALARM_TEXT, SOURCES, iso a
                            rows_of, read_json, write_json_atomic, parse_jsonl_line, open_append,
                            write_failed, write_ok, append_jsonl)
 
-MONITOR_VERSION = "1.0.1"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
+MONITOR_VERSION = "1.0.2"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
 
 # ============================================================================ who started / stopped it
 # SOURCES (burner_common) is the one table of "source" names: the `source` field on a start / stop event
@@ -808,7 +808,7 @@ def _bin_tpl(key):
 UPDATE_REQUESTS = ("check", "retry", "back")
 UPDATE_PHASES = ("check", "download", "waiting", "install", "back")
 UPDATE_CODES = ("uptodate", "offline", "no_release", "no_repo", "updated", "rolled_back", "build_failed", "disk_full",
-                "busy", "later", "available", "bad_skipped", "went_back", "no_previous", "back_busy", "back_failed",
+                "busy", "later", "available", "bad_skipped", "left_skipped", "went_back", "no_previous", "back_busy", "back_failed",
                 "error", "local_changes", "unknown_base", "tidy_wait")
 UPDATE_WHY = ("no_answer", "status", "settings", "boiler", "swap")
 
@@ -881,12 +881,14 @@ def update_info(data_dir, now=None):
         key = code if code in UPDATE_CODES else "error"
         if key == "rolled_back" and d.get("why") in UPDATE_WHY:
             why = d["why"]
-    btn = None if busy else "install" if key in ("available", "later", "unknown_base") else "retry" if key == "bad_skipped" else "check"
+    left = _upd_ver(d.get("from")) if key == "went_back" else None    # "Go back" was pressed: offer the version that was left
+    btn = None if busy else "install" if key in ("available", "later", "unknown_base") else \
+        "retry" if key in ("bad_skipped", "left_skipped") or left else "check"
     out = {"current": cur, "latest": latest, "available": bool(d.get("available")), "auto": bool(d.get("auto")),
            "checked": d.get("checked") if isinstance(d.get("checked"), (int, float)) else None,
            "result": str(d.get("result") or "")[:200],
            "view": {"key": key, "busy": busy, "btn": btn, "back": None if busy or old else prev_v, "why": why,
-                    "current": cur, "latest": latest, "to": _upd_ver(d.get("to")) or latest,
+                    "current": cur, "latest": left or latest, "to": _upd_ver(d.get("to")) or latest,
                     "from": _upd_ver(d.get("from"))}}
     return out
 

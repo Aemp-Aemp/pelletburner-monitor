@@ -547,7 +547,7 @@ if [ "$MODE" = back ]; then
   fi
   if health "$was" "$keys"; then
     set_version "$TO"
-    if is_release "$FROM"; then touch "$STATE/bad-$FROM"; fi     # not installed again by itself
+    if is_release "$FROM"; then echo left > "$STATE/bad-$FROM"; fi     # not installed again by itself ("left": the owner went back)
     rm -f "$JOURNAL"
     sync
     drop_kept
@@ -620,7 +620,12 @@ else
   log "running $CURRENT (not a release), older than $LATEST: installing it, as asked on the page"
 fi
 if [ "$MODE" = retry ]; then rm -f "$STATE/bad-$LATEST" "$STATE/buildfail-$LATEST"; fi
-if [ -e "$STATE/bad-$LATEST" ]; then finish bad_skipped "update $LATEST available, but it failed here before; skipped"; fi
+if [ -e "$STATE/bad-$LATEST" ]; then
+  if [ "$(head -c 4 "$STATE/bad-$LATEST" 2>/dev/null)" = left ]; then
+    finish left_skipped "update $LATEST available, but you went back from it before; skipped"
+  fi
+  finish bad_skipped "update $LATEST available, but it failed here before; skipped"
+fi
 fails=0
 if [ -f "$STATE/buildfail-$LATEST" ]; then fails=$(tr -cd '0-9' < "$STATE/buildfail-$LATEST" || true); fi
 fails=${fails:-0}

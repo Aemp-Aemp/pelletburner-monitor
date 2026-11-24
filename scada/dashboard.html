@@ -799,7 +799,7 @@ const UPD_TXT={
   busy:"{to} was downloaded, but the boiler stayed busy. Press again when the boiler is off or waiting.",
   later:"New version {latest} is out. It is installed tonight when the boiler is off or waiting, or now with the button.",
   available:"New version {latest} is out.",
-  bad_skipped:"{latest} did not work here before, so it is skipped.",
+  bad_skipped:"{latest} did not work here before, so it is skipped.", left_skipped:"You went back from {latest} earlier, so it is not installed by itself.",
   went_back:"Went back to {current}. {from} is not installed again by itself.",
   no_previous:"There is no older version to go back to.",
   back_busy:"Going back is only done when the boiler is off or waiting. Try again then.",
@@ -834,7 +834,7 @@ const UPD_TXT={
   busy:"{to} blev hentet, men kedlen var hele tiden i gang. Tryk igen, når kedlen er slukket eller venter.",
   later:"Ny version {latest} er ude. Den installeres i nat, når kedlen er slukket eller venter, eller nu med knappen.",
   available:"Ny version {latest} er ude.",
-  bad_skipped:"{latest} virkede ikke her før og springes derfor over.",
+  bad_skipped:"{latest} virkede ikke her før og springes derfor over.", left_skipped:"Du gik tilbage fra {latest} tidligere, så den installeres ikke af sig selv.",
   went_back:"Gik tilbage til {current}. {from} installeres ikke igen af sig selv.",
   no_previous:"Der er ingen ældre version at gå tilbage til.",
   back_busy:"Der gås kun tilbage, når kedlen er slukket eller venter. Prøv igen da.",
@@ -845,7 +845,7 @@ const UPD_TXT={
   tidy_wait:"En opdatering blev afbrudt. Den gamle versions filer er tilbage; den starter igen, når kedlen er slukket eller venter.",
   error:"Opdateringen stoppede med en fejl. Stadig på {current}."}};
 const updT=(k,v)=>String((UPD_TXT[LANG]||UPD_TXT.en)[k]||"").replace(/\{(\w+)\}/g,(m,x)=>v&&v[x]!=null?v[x]:"");
-let UPD=null, UPD_BUSY=false, UPD_TIMER=0;       // the last api/update answer (null = no updater here); still at work?
+let UPD=null, UPD_BUSY=false, UPD_TIMER=0, UPD_WATCH=0, UPD_KEY0=null;       // the last api/update answer (null = no updater here); still at work?
 // the words for the state; "" when there is no updater on this machine
 function updStateText(){ const v=UPD&&UPD.view; if(!v) return ""; return updT(v.key,v)+(v.why?" "+updT("why_"+v.why,v):""); }
 // the inside of the card: version, state, buttons (data-upd = check / retry / back), the short rule.
@@ -865,12 +865,16 @@ async function updLoad(){ clearTimeout(UPD_TIMER);
   try{ const {j}=await api("api/update"); UPD=j&&j.current&&j.view?j:null; }catch(e){ ok=false; }
   if(ok){ const v=UPD&&UPD.view, busy=!!(v&&v.busy);
     // the version changed under the page: load the page of the version that runs now (it shows the same result)
-    if(UPD_BUSY&&!busy&&v&&["updated","rolled_back","went_back"].includes(v.key)) setTimeout(()=>location.reload(),4000);
+    // also right after a press (UPD_WATCH): the updater may pick the request up a moment after the first read
+    const watching=Date.now()<UPD_WATCH;
+    if(!busy&&v&&["updated","rolled_back","went_back"].includes(v.key)&&(UPD_BUSY||(watching&&v.key!==UPD_KEY0))){
+      UPD_WATCH=0; setTimeout(()=>location.reload(),4000); }
     UPD_BUSY=busy; }
   updDraw();
-  if(UPD_BUSY) UPD_TIMER=setTimeout(updLoad,3000); }
+  if(UPD_BUSY||Date.now()<UPD_WATCH) UPD_TIMER=setTimeout(updLoad,3000); }
 // a button was pressed: what = check / retry / back. Only that word is sent. -> true when the Pi took the request
 async function updAsk(what){ let ok=false;
+  UPD_KEY0=UPD&&UPD.view?UPD.view.key:null; UPD_WATCH=Date.now()+120000;   // keep reading for 2 min after a press
   try{ ok=(await api("api/update/"+what,{})).ok; }catch(e){}
   await updLoad(); return ok; }
 /* ==SHARED-END== */

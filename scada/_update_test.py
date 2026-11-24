@@ -94,6 +94,8 @@ check("found while auto-update is off: the button installs it", v["key"] == "ava
 check("found at night while the boiler works: the button installs it", info(U(latest="v1.1.0", code="later"))["view"]["btn"] == "install")
 v = info(U(latest="v1.1.0", available=True, code="bad_skipped"))["view"]
 check("failed here before: the button tries it again", v["key"] == "bad_skipped" and v["btn"] == "retry")
+v = info(U(code="went_back", **{"from": "v1.0.1", "to": "v1.0.0"}))["view"]
+check("after Go back the button offers the version that was left", v["key"] == "went_back" and v["btn"] == "retry" and v["latest"] == "v1.0.1")
 for code in X.UPDATE_CODES:
     check(f"result '{code}' is passed on", info(U(code=code))["view"]["key"] == code)
 check("an unknown result reads as an error", info(U(code="something else"))["view"]["key"] == "error")
@@ -629,9 +631,10 @@ def updater_tests():
     j = b.run("check", ask="back")
     check("Go back twice: there is no older version", j.get("code") == "no_previous" and b.on("v1.0.0"))
     j = b.run("auto", AUTO_UPDATE="yes")
-    check("the version that was left is not installed again by itself", j.get("code") == "bad_skipped" and b.on("v1.0.0"))
+    check("the version that was left is not installed again by itself (and says you went back)", j.get("code") == "left_skipped" and b.on("v1.0.0"))
     j = b.run("check", ask="check")
-    check("... nor by a plain press", j.get("code") == "bad_skipped" and b.on("v1.0.0"))
+    check("... nor by a plain press", j.get("code") == "left_skipped" and b.on("v1.0.0"))
+    check("... and the page offers Try again", X.update_info(b.data, time.time())["view"]["btn"] == "retry")
     j = b.run("check", ask="retry")
     check("'Try again' installs it once more", j.get("code") == "updated" and b.on("v1.1.0") and not b.has("bad-v1.1.0"), (j, b.out))
     mon.behave = {"img-v1.0.0": "down"}
