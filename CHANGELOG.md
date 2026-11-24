@@ -4,6 +4,11 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.5
+
+### Fixed
+- GitHub's own test machine installs the picture library too; no changes on the Pi.
+
 ## 1.0.4
 
 ### New
