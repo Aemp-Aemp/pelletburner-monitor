@@ -22,8 +22,20 @@ Everything in 0.9.0, plus:
 - One-command install on the Raspberry Pi: `sudo sh pi/install.sh`.
 - `AI.md`: a short install guide for your own AI assistant, with the safety rules it must follow.
 - Tests run on GitHub on every push and pull request (`run_tests.py --no-browser` skips the browser tests).
+- "Trouble lighting?" card (/home History, /classic Analysis): how the last 10 starts went, the boiler's lighting
+  settings next to the factory values, and what to try, one thing at a time. "Copy lighting report" gives a short
+  text to paste where you ask for help. Read only: the monitor changes no boiler setting.
+- Update from the page (Raspberry Pi): a **Check for update** button in Settings → About this monitor checks,
+  downloads and installs the newest release and shows each step, in English and Danish.
+- **Go back to the previous version** for 14 days after an update (only while the boiler is off or waiting).
+- Guide: what to do before and after upgrading the boiler's software (1.13 → 1.40 or newer).
 
 ### Better
+
+- Safer updates: the new version must start, answer and reach the boiler again, or the Pi goes back by itself and
+  the page says why. The updater never installs a pre-release or an older version and tidies up after a power cut.
+  A Pi with the first updater needs `sudo sh pi/install-auto-update.sh` once.
+- New SD cards point at the project's public repository, so they get updates out of the box.
 
 - Much less Wi-Fi traffic: an open page uses about 10 kB a minute instead of about 100 kB a second. On slow
   Wi-Fi the pages no longer pile up waiting requests.
@@ -73,6 +85,9 @@ Everything in 0.9.0, plus:
 - Burner health "Time to flame": no longer says "Still learning" when the usual time is already known, and it
   judges the last 3 starts that lit, not only the newest (one slow start showed a green tick).
 - /classic Analysis: "Started by" is filled in when the page is opened straight on the Analysis tab.
+- /classic Settings: the heating plan line is now Danish on the Danish page. Step by step no longer points at a
+  highlighted card that is not there while running.
+- /home day chart on a phone: crowded start times no longer lose their labels.
 
 ## 0.9.0 (never released; the state before 1.0.0)
 

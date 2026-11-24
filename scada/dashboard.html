@@ -527,6 +527,8 @@
         <div class="note" id="t_ig_cold_note"></div>
       </div>
     </div>
+    <!-- "Trouble lighting?": the lighting help card (read only), drawn by lhHTML in the SHARED block -->
+    <div class="card" id="lightHelp" style="margin-top:12px;display:none"></div>
     <div class="card" style="margin-top:12px">
       <h3 id="t_ig_table"></h3>
       <div class="tscroll"><table class="tbl" id="igTable"></table></div>
@@ -600,6 +602,8 @@
     </div>
   </div>
 
+  <!-- software update (only on a Pi with the updater); filled by updDraw -->
+  <div class="card" id="updCard" style="margin-top:12px" hidden></div>
   <div class="foot" id="foot"></div>
   <div class="foot" id="foot2"></div>
   <div class="foot" id="footVer"></div>
@@ -639,6 +643,236 @@ const axisDec=st=>st<0.1?2:(Math.abs(st-Math.round(st))>1e-9?1:0);
 const api=(path,body)=>fetch(path, body===undefined?{cache:"no-cache"}:
   {method:"POST",headers:{"Content-Type":"application/json","X-Burner":"1"},body:JSON.stringify(body)})
   .then(r=>r.json().then(j=>({ok:r.ok,j})));
+
+// ---- Lighting help ("Trouble lighting?"), the same card on both pages. READ ONLY: it shows what the server worked
+// out from the settings the boiler sent and from the start records (api/ignitions "help"). It never sends anything.
+// The words are here (EN/DA); the server sends codes and numbers.
+const LH_TXT={
+ en:{title:"Trouble lighting?", ro:"This card only reads; it never changes a boiler setting.",
+  v_ok:"Lights fine: about {a} min to flame in the last {n} starts.", v_ok1:"One start did not light.",
+  v_slow:"Lights slowly: about {a} min to flame in the last {n} starts.",
+  v_fails:"Often fails to light: {a} of the last {n} starts did not light.",
+  v_few:"Too few starts yet to say how it lights.",
+  set_h:"The boiler's lighting settings", c_set:"Setting", c_now:"Now", c_fac:"Factory", c_ref:"One 15 kW boiler",
+  n_014:"Start fuel (TÆNDBRÆNDSEL)", n_015:"Air at lighting (TÆND LUFT)", n_017:"Lighting timeout (TIMEOUT)",
+  n_018:"Top-up doses, max (MAX DOSER)", n_001:"Fuel rate (BRÆNDSEL KG/T)", n_035:"PID P",
+  boiler:"Boiler: {m} type, software {v}.", sw_none:"not typed in", type_none:"unknown",
+  fac_note:"Factory: the boiler's own values for this software and boiler type. One 15 kW boiler: what lit in 3–5 minutes there. It is an example, not the one right answer.",
+  sw_note:"The software version is not typed in (Settings → My boiler) or is unknown, so the factory values are those of 1.40 and newer.",
+  no_cfg:"The boiler has not sent its settings yet.",
+  m_diff:"not the factory value", m_unused:"not used by software 1.40",
+  m_doses:"MAX DOSER is below 2: 0 gives about 255 top-up doses (only the timeout stops them), 1 gives none.", m_high:"Start fuel is high. One 15 kW boiler took over 10 minutes to flame and smoked with 60 s; it lit in 3–5 minutes with 40 s.",
+  m_low:"Start fuel is below the factory value. Too few pellets may not catch.",
+  m_short:"The lighting timeout is short. The boiler may give up before the pellets catch.",
+  blind:"The monitor cannot read the fan speed points (BLÆSER YDELSE) or the service menu. Look at them on the boiler's screen.",
+  try_h:"What to try, one thing at a time",
+  s1:"Clean the burner pot and its air holes, and empty the ash.",
+  s2:"Wipe the flame sensor glass. The boiler only sees the fire through it.",
+  s3:"Check the igniter: it must get hot. Test it on the boiler: MONTØR → AVANCERET → TEST MENU → OUTPUTS → TÆNDER.",
+  s4:"Use dry pellets. Damp pellets light badly.",
+  s5:"A boiler type change, and most likely a software upgrade too, puts the boiler back on factory settings. Compare with the table above and put your old values back: MONTØR → OPTÆNDING.",
+  s6:"Soot or coarse ash as well? Look at the fan: MONTØR → SUGEINDSTILLINGER → BLÆSER YDELSE. The 30 % point is 500 rpm from the factory. That gave too little air on one 15 kW boiler; 1200 rpm worked there. (The rpm points and the 500 rpm factory value are from software 1.40 on the 10 and 15 kW types.)",
+  s7:"Then the lighting settings in MONTØR → OPTÆNDING. Write the old value down, change one setting, and watch the next 3 starts here. Start with the start fuel (TÆNDBRÆNDSEL).",
+  s7_sync:"The monitor's settings sync is on: it puts its saved value back. Change the value on the page instead, or turn the sync off.",
+  s8:"Still bad? Press Copy lighting report and paste it where you ask for help.",
+  copy:"Copy lighting report", copied:"Copied", copy_note:"The report includes your start times.", guide:"Guide: after a boiler software upgrade", open:"Trouble lighting? See what to try",
+  r_title:"Lighting report (pellet boiler monitor {v})", r_set:"Lighting settings (now / factory):", r_starts:"Last {n} starts (newest first):",
+  r_none:"No starts recorded yet.", r_lit:"lit, {a} min to flame", r_lit0:"lit", r_fail:"did not light", r_fail_a:"did not light (alarm {a})", r_stop:"stopped",
+  r_cfg:"start fuel {a} s, max doses {b}", r_blind:"Not read by the monitor: fan speed points (BLÆSER YDELSE), service menu.", r_marks:"* = not the factory value, ! = worth a look"},
+ da:{title:"Problemer med optænding?", ro:"Dette kort læser kun; det ændrer aldrig en indstilling på kedlen.",
+  v_ok:"Tænder fint: ca. {a} min til flamme i de seneste {n} starter.", v_ok1:"Én start tændte ikke.",
+  v_slow:"Tænder langsomt: ca. {a} min til flamme i de seneste {n} starter.",
+  v_fails:"Tænder ofte ikke: {a} af de seneste {n} starter tændte ikke.",
+  v_few:"For få starter endnu til at sige, hvordan den tænder.",
+  set_h:"Kedlens indstillinger for optænding", c_set:"Indstilling", c_now:"Nu", c_fac:"Fabrik", c_ref:"Én 15 kW kedel",
+  n_014:"Tændbrændsel (TÆNDBRÆNDSEL)", n_015:"Luft ved optænding (TÆND LUFT)", n_017:"Timeout for optænding (TIMEOUT)",
+  n_018:"Ekstra doser, højst (MAX DOSER)", n_001:"Brændsel (BRÆNDSEL KG/T)", n_035:"PID P",
+  boiler:"Kedel: type {m}, software {v}.", sw_none:"ikke skrevet ind", type_none:"ukendt",
+  fac_note:"Fabrik: kedlens egne værdier for denne software og kedeltype. Én 15 kW kedel: det, der tændte på 3–5 minutter dér. Det er et eksempel, ikke det eneste rigtige svar.",
+  sw_note:"Softwareversionen er ikke skrevet ind (Indstillinger → Min kedel) eller er ukendt, så fabriksværdierne er dem for 1.40 og nyere.",
+  no_cfg:"Kedlen har ikke sendt sine indstillinger endnu.",
+  m_diff:"ikke fabriksværdien", m_unused:"bruges ikke af software 1.40",
+  m_doses:"MAX DOSER er under 2: 0 giver ca. 255 ekstra doser (kun timeout stopper dem), 1 giver ingen.", m_high:"Tændbrændsel er højt. Én 15 kW kedel var over 10 minutter om at få flamme og røg med 60 s; den tændte på 3–5 minutter med 40 s.",
+  m_low:"Tændbrændsel er under fabriksværdien. For få piller fænger måske ikke.",
+  m_short:"Timeout for optænding er kort. Kedlen giver måske op, før pillerne fænger.",
+  blind:"Monitoren kan ikke aflæse røgsugerens omdrejninger (BLÆSER YDELSE) eller servicemenuen. Se dem på kedlens skærm.",
+  try_h:"Det kan du prøve, én ting ad gangen",
+  s1:"Rens herden og dens lufthuller, og tøm asken.",
+  s2:"Tør flammefølerens glas af. Kedlen ser kun ilden gennem det.",
+  s3:"Tjek tænderen: den skal blive varm. Test den på kedlen: MONTØR → AVANCERET → TEST MENU → OUTPUTS → TÆNDER.",
+  s4:"Brug tørre piller. Fugtige piller tænder dårligt.",
+  s5:"Et skift af kedeltype, og højst sandsynligt også en softwareopdatering, sætter kedlen tilbage til fabriksindstillinger. Sammenlign med tabellen ovenfor, og sæt dine gamle værdier ind igen: MONTØR → OPTÆNDING.",
+  s6:"Også sod eller grov aske? Se på røgsugeren: MONTØR → SUGEINDSTILLINGER → BLÆSER YDELSE. Punktet ved 30 % er 500 o/min fra fabrikken. Det gav for lidt luft på én 15 kW kedel; 1200 o/min virkede dér. (Omdrejningspunkterne og fabriksværdien 500 o/min er fra software 1.40 på 10 og 15 kW typerne.)",
+  s7:"Derefter indstillingerne i MONTØR → OPTÆNDING. Skriv den gamle værdi ned, ændr én indstilling, og hold øje med de næste 3 starter her. Begynd med tændbrændsel (TÆNDBRÆNDSEL).",
+  s7_sync:"Monitorens indstillingssynkronisering er slået til: den sætter sin gemte værdi tilbage. Ændr værdien på siden i stedet, eller slå synkroniseringen fra.",
+  s8:"Stadig dårligt? Tryk Kopiér optændingsrapport, og sæt den ind dér, hvor du spørger om hjælp.",
+  copy:"Kopiér optændingsrapport", copied:"Kopieret", copy_note:"Rapporten indeholder dine starttidspunkter.", guide:"Guide: efter en softwareopdatering af kedlen", open:"Problemer med optænding? Se hvad du kan prøve",
+  r_title:"Optændingsrapport (pillefyr-monitor {v})", r_set:"Indstillinger for optænding (nu / fabrik):", r_starts:"Seneste {n} starter (nyeste først):",
+  r_none:"Ingen starter registreret endnu.", r_lit:"tændte, {a} min til flamme", r_lit0:"tændte", r_fail:"tændte ikke", r_fail_a:"tændte ikke (alarm {a})", r_stop:"stoppet",
+  r_cfg:"tændbrændsel {a} s, max doser {b}", r_blind:"Aflæses ikke af monitoren: røgsugerens omdrejninger (BLÆSER YDELSE), servicemenuen.", r_marks:"* = ikke fabriksværdien, ! = værd at se på"}};
+const lhT=(k,p)=>{ let s=(LH_TXT[LANG]||LH_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
+const LH_KW={0:"10 kW",1:"15 kW",2:"25 kW"};
+let LH_OPEN=null;                 // the card: null = open by itself when lighting is slow or fails; true/false = the user's choice
+// a setting's value as text: seconds, %, kg/h (the boiler's screen shows the fuel rate in kg/h)
+const lhVal=(id,v)=>v==null?"–":id==="001"?fmt(v/1000,1)+" kg/h":id==="035"?fmt(v,1):fmt(v,0)+({"014":" s","015":" %","017":" s"}[id]||"");
+const lhBad=h=>!!(h&&h.verdict&&(h.verdict.k==="slow"||h.verdict.k==="fails"));
+function lhVerdict(h){
+  const v=(h&&h.verdict)||{k:"few"};
+  if(v.k==="fails") return lhT("v_fails",{a:v.failed,n:v.n});
+  if(v.k==="slow") return lhT("v_slow",{a:fmt(v.min,1),n:v.n});
+  if(v.k==="ok"&&v.min!=null) return lhT("v_ok",{a:fmt(v.min,1),n:v.n})+(v.failed===1?" "+lhT("v_ok1"):"");
+  return lhT("v_few");
+}
+const lhBoiler=h=>lhT("boiler",{m:h.type!=null?LH_KW[h.type]:lhT("type_none"),v:h.sw||lhT("sw_none")});
+// the inside of the card. c = the page's colours {warn, dim, line}, guide = the link to the guide section
+function lhHTML(h,c,guide){
+  if(!h) return "";
+  const bad=lhBad(h), rows=h.rows||[], any=rows.some(r=>r.now!=null), td=`padding:6px 8px 6px 0;border-bottom:1px solid ${c.line};text-align:left;vertical-align:top`;
+  const notes=[...new Set(rows.filter(r=>r.mark&&r.mark!=="diff"&&r.mark!=="unused").map(r=>r.mark))];
+  const nm=r=>esc(lhT("n_"+r.id))+(r.mark==="unused"?` <span style="color:${c.dim}">(${esc(lhT("m_unused"))})</span>`:"");
+  const mk=r=>!r.mark||r.mark==="unused"?"":r.mark==="diff"?` <span title="${esc(lhT("m_diff"))}" style="color:${c.dim}">●</span>`:` <b style="color:${c.warn}">!</b>`;
+  return `<details id="lhDet"${(LH_OPEN==null?bad:LH_OPEN)?" open":""}><summary style="cursor:pointer"><b>${esc(lhT("title"))}</b> <span id="lhVerdict" style="color:${bad?c.warn:c.dim}">${esc(lhVerdict(h))}</span></summary>
+    <p style="margin:12px 0 6px"><b>${esc(lhT("set_h"))}</b> <span style="color:${c.dim}">${esc(lhBoiler(h))}</span></p>
+    ${any?`<div style="overflow-x:auto"><table id="lhTable" style="width:100%;border-collapse:collapse;font-size:14px"><tr>${["c_set","c_now","c_fac","c_ref"].map(k=>`<th style="${td};color:${c.dim};font-weight:600">${esc(lhT(k))}</th>`).join("")}</tr>
+      ${rows.map(r=>`<tr data-id="${esc(r.id)}"${r.mark?` data-mark="${esc(r.mark)}"`:""}><td style="${td}">${nm(r)}</td><td style="${td};white-space:nowrap"><b>${esc(lhVal(r.id,r.now))}</b>${mk(r)}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.fac))}</td><td style="${td};white-space:nowrap">${esc(lhVal(r.id,r.ref))}</td></tr>`).join("")}</table></div>
+    ${notes.map(m=>`<p style="margin:8px 0 0;color:${c.warn}"><b>!</b> ${esc(lhT("m_"+m))}</p>`).join("")}
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">● ${esc(lhT("m_diff"))}. ${esc(lhT("fac_note"))}${h.sw&&h.sw_known!==false?"":" "+esc(lhT("sw_note"))}<br>${esc(lhT("blind"))}</p>`
+    :`<p style="margin:0;color:${c.dim}">${esc(lhT("no_cfg"))}</p>`}
+    <p style="margin:14px 0 4px"><b>${esc(lhT("try_h"))}</b></p>
+    <ol id="lhSteps" style="margin:0;padding-left:22px;line-height:1.5">${[1,2,3,4,5,6,7,8].map(i=>`<li style="margin-top:4px">${esc(lhT("s"+i))}${i===7&&h.sync?" "+esc(lhT("s7_sync")):""}</li>`).join("")}</ol>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px"><button type="button" class="btn sec" data-lh="copy">${esc(lhT("copy"))}</button>
+      <a class="link" href="${esc(guide)}" target="_blank" rel="noopener">${esc(lhT("guide"))}</a></div>
+    <p id="lhCopyNote" style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(lhT("copy_note"))}</p>
+    <p style="margin:10px 0 0;color:${c.dim};font-size:13px">${esc(lhT("ro"))}</p></details>`;
+}
+// the plain text for the clipboard: boiler type, software, settings, the last starts, the monitor's version.
+// Nothing personal: no names, addresses, topics, place or pellet batch names.
+function lhReport(h,ver){
+  const p=n=>String(n).padStart(2,"0"), when=e=>{ const d=new Date(e*1000); return p(d.getDate())+"/"+p(d.getMonth()+1)+" "+p(d.getHours())+":"+p(d.getMinutes()); };
+  const L=[lhT("r_title",{v:ver||"?"}), lhBoiler(h), lhVerdict(h), "", lhT("r_set")];
+  (h.rows||[]).forEach(r=>L.push("- "+lhT("n_"+r.id)+": "+lhVal(r.id,r.now)+" / "+lhVal(r.id,r.fac)+(r.mark==="unused"?"  ("+lhT("m_unused")+")":r.mark&&r.mark!=="diff"?"  !":r.mark?"  *":"")));
+  if((h.rows||[]).some(r=>r.mark&&r.mark!=="unused")) L.push(lhT("r_marks"));
+  L.push(lhT("r_blind"));
+  if(!(h.sw&&h.sw_known!==false)) L.push(lhT("sw_note"));
+  L.push("");
+  const st=h.starts||[];
+  L.push(st.length?lhT("r_starts",{n:st.length}):lhT("r_none"));
+  st.forEach((s,i)=>{ const res=s.result==="ok"?(s.flame_min!=null?lhT("r_lit",{a:fmt(s.flame_min,1)}):lhT("r_lit0")):
+      s.result==="failed"?(s.alarm?lhT("r_fail_a",{a:s.alarm}):lhT("r_fail")):lhT("r_stop");
+    L.push((i+1)+". "+(s.epoch?when(s.epoch)+"  ":"")+res+(s.start_fuel!=null&&s.max_doses!=null?"  ("+lhT("r_cfg",{a:s.start_fuel,b:s.max_doses})+")":"")); });
+  return L.join("\n");
+}
+// copy text; the pages are plain http on the home network, so there is a fallback for browsers without clipboard access
+function lhCopy(txt,btn){
+  const done=()=>{ if(!btn) return; btn.textContent=lhT("copied"); setTimeout(()=>{ btn.textContent=lhT("copy"); },2000); };
+  if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(txt).then(done).catch(()=>{}); return; }
+  const ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select(); try{ if(document.execCommand("copy")) done(); }catch(e){} ta.remove();
+}
+document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="lhDet") LH_OPEN=e.target.open; },true);
+
+// ---- software update card (a Raspberry Pi with the updater, pi/pelletpi-update.sh). The monitor says which state
+// it is (api/update "view", made by burner_ext.update_info); here are the words and the buttons for both pages.
+const UPD_TXT={
+ en:{title:"Software update", ver:"Version {current}", open:"Update…",
+  btn_check:"Check for update", btn_install:"Install {latest}", btn_retry:"Try {latest} again", btn_back:"Go back to {prev}",
+  note:"A new version is installed when the boiler is off or waiting. If it does not work here, the Pi goes back to the old version by itself. Settings and history are kept.",
+  back_confirm:"Go back to {prev}? Settings and history are kept.", send_fail:"Could not ask the Pi. Try again.",
+  asked:"Checking…", no_updater:"The Pi’s updater did not answer. Try again in a minute.",
+  old:"This Pi has the first updater: it updates, but shows no progress here. See “Updating” in the guide.",
+  ph_check:"Checking for a new version…",
+  ph_download:"New version {to} found. Downloading it now (5–15 minutes). The boiler runs as usual.",
+  ph_waiting:"{to} is downloaded. It is installed as soon as the boiler is off or waiting. Internet is no longer needed.",
+  ph_install:"Installing {to} and testing it with your boiler (up to 7 minutes). The page may be away for a moment.",
+  ph_back:"Going back to {to}…",
+  uptodate:"You have the newest version.",
+  offline:"No internet. Share internet from your phone (hotspot) and try again.",
+  no_release:"There is no release to install yet.",
+  no_repo:"This Pi has no update address, so it cannot update. See “Updating” in the guide.",
+  updated:"Now on {current}.",
+  rolled_back:"{to} did not work here – went back to {current}.",
+  why_no_answer:"The new version did not start.", why_status:"The new version did not show the boiler’s data.",
+  why_settings:"The new version could not read your settings.", why_boiler:"The boiler did not connect again.",
+  why_swap:"Docker did not start it.",
+  build_failed:"Could not download {to}: the internet was lost, or the Pi’s card is full. Still on {current}.",
+  disk_full:"Not enough free space on the Pi’s card for {to}. Still on {current}.",
+  busy:"{to} was downloaded, but the boiler stayed busy. Press again when the boiler is off or waiting.",
+  later:"New version {latest} is out. It is installed tonight when the boiler is off or waiting, or now with the button.",
+  available:"New version {latest} is out.",
+  bad_skipped:"{latest} did not work here before, so it is skipped.",
+  went_back:"Went back to {current}. {from} is not installed again by itself.",
+  no_previous:"There is no older version to go back to.",
+  back_busy:"Going back is only done when the boiler is off or waiting. Try again then.",
+  back_failed:"The older version did not start. Still on {current}.",
+  interrupted:"The update was interrupted. The version that was running is kept. Try again.",
+  local_changes:"Local changes in the program folder; the update was not installed. Still on {current}.",
+  unknown_base:"New version {latest} is out. This Pi runs a copy that is not a release, so it is not installed by itself. The button installs it if your copy is older.",
+  tidy_wait:"An update was interrupted. The old version’s files are back; it starts again when the boiler is off or waiting.",
+  error:"The update stopped with an error. Still on {current}."},
+ da:{title:"Opdatering af programmet", ver:"Version {current}", open:"Opdatering…",
+  btn_check:"Søg efter opdatering", btn_install:"Installér {latest}", btn_retry:"Prøv {latest} igen", btn_back:"Gå tilbage til {prev}",
+  note:"En ny version installeres, når kedlen er slukket eller venter. Virker den ikke her, går Pi’en selv tilbage til den gamle version. Indstillinger og historik bevares.",
+  back_confirm:"Gå tilbage til {prev}? Indstillinger og historik bevares.", send_fail:"Kunne ikke spørge Pi’en. Prøv igen.",
+  asked:"Søger…", no_updater:"Pi’ens opdatering svarede ikke. Prøv igen om et minut.",
+  old:"Denne Pi har den første opdatering: den opdaterer, men viser ikke forløbet her. Se “Opdatering” i guiden.",
+  ph_check:"Søger efter en ny version…",
+  ph_download:"Ny version {to} fundet. Den hentes nu (5–15 minutter). Kedlen kører som normalt.",
+  ph_waiting:"{to} er hentet. Den installeres, så snart kedlen er slukket eller venter. Internet er ikke længere nødvendigt.",
+  ph_install:"Installerer {to} og afprøver den med din kedel (op til 7 minutter). Siden kan være væk et øjeblik.",
+  ph_back:"Går tilbage til {to}…",
+  uptodate:"Du har den nyeste version.",
+  offline:"Intet internet. Del internet fra din telefon (hotspot), og prøv igen.",
+  no_release:"Der er endnu ingen udgave at installere.",
+  no_repo:"Denne Pi har ingen opdateringsadresse og kan derfor ikke opdatere. Se “Opdatering” i guiden.",
+  updated:"Nu på {current}.",
+  rolled_back:"{to} virkede ikke her – gik tilbage til {current}.",
+  why_no_answer:"Den nye version startede ikke.", why_status:"Den nye version viste ikke kedlens data.",
+  why_settings:"Den nye version kunne ikke læse dine indstillinger.", why_boiler:"Kedlen fik ikke forbindelse igen.",
+  why_swap:"Docker startede den ikke.",
+  build_failed:"Kunne ikke hente {to}: internettet forsvandt, eller Pi’ens kort er fuldt. Stadig på {current}.",
+  disk_full:"Ikke nok fri plads på Pi’ens kort til {to}. Stadig på {current}.",
+  busy:"{to} blev hentet, men kedlen var hele tiden i gang. Tryk igen, når kedlen er slukket eller venter.",
+  later:"Ny version {latest} er ude. Den installeres i nat, når kedlen er slukket eller venter, eller nu med knappen.",
+  available:"Ny version {latest} er ude.",
+  bad_skipped:"{latest} virkede ikke her før og springes derfor over.",
+  went_back:"Gik tilbage til {current}. {from} installeres ikke igen af sig selv.",
+  no_previous:"Der er ingen ældre version at gå tilbage til.",
+  back_busy:"Der gås kun tilbage, når kedlen er slukket eller venter. Prøv igen da.",
+  back_failed:"Den ældre version startede ikke. Stadig på {current}.",
+  interrupted:"Opdateringen blev afbrudt. Den version, der kørte, er beholdt. Prøv igen.",
+  local_changes:"Lokale ændringer i programmappen; opdateringen blev ikke installeret. Stadig på {current}.",
+  unknown_base:"Ny version {latest} er ude. Denne Pi kører en kopi, der ikke er en udgave, så den installeres ikke af sig selv. Knappen installerer den, hvis din kopi er ældre.",
+  tidy_wait:"En opdatering blev afbrudt. Den gamle versions filer er tilbage; den starter igen, når kedlen er slukket eller venter.",
+  error:"Opdateringen stoppede med en fejl. Stadig på {current}."}};
+const updT=(k,v)=>String((UPD_TXT[LANG]||UPD_TXT.en)[k]||"").replace(/\{(\w+)\}/g,(m,x)=>v&&v[x]!=null?v[x]:"");
+let UPD=null, UPD_BUSY=false, UPD_TIMER=0;       // the last api/update answer (null = no updater here); still at work?
+// the words for the state; "" when there is no updater on this machine
+function updStateText(){ const v=UPD&&UPD.view; if(!v) return ""; return updT(v.key,v)+(v.why?" "+updT("why_"+v.why,v):""); }
+// the inside of the card: version, state, buttons (data-upd = check / retry / back), the short rule.
+// cls = the page's own button classes [main, second]
+function updCardHTML(cls){ const v=UPD&&UPD.view; if(!v) return "";
+  const b=(what,label,c)=>`<button type="button" class="${c}" data-upd="${what}">${esc(label)}</button>`;
+  let h=`<div style="font-weight:700">${esc(updT("title"))}</div><div style="margin-top:4px;opacity:.75">${esc(updT("ver",v))}</div>`+
+    `<div id="updState" data-key="${esc(v.key)}" aria-live="polite" style="margin-top:10px;font-weight:600">${v.busy?"⏳ ":""}${esc(updStateText())}</div>`+
+    `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px">`;
+  if(v.btn) h+=b(v.btn==="retry"?"retry":"check",updT("btn_"+v.btn,v),cls[0]);
+  if(v.back) h+=b("back",updT("btn_back",{prev:v.back}),cls[1]);
+  return h+`</div><div style="margin-top:12px;font-size:13px;opacity:.75">${esc(updT("note"))}</div>`; }
+// Reads the state and draws it (the page's updDraw). While the updater works it asks again every 3 s; the monitor
+// restarts in the middle of an update, so a failed read keeps the last state and tries again.
+async function updLoad(){ clearTimeout(UPD_TIMER);
+  let ok=true;
+  try{ const {j}=await api("api/update"); UPD=j&&j.current&&j.view?j:null; }catch(e){ ok=false; }
+  if(ok){ const v=UPD&&UPD.view, busy=!!(v&&v.busy);
+    // the version changed under the page: load the page of the version that runs now (it shows the same result)
+    if(UPD_BUSY&&!busy&&v&&["updated","rolled_back","went_back"].includes(v.key)) setTimeout(()=>location.reload(),4000);
+    UPD_BUSY=busy; }
+  updDraw();
+  if(UPD_BUSY) UPD_TIMER=setTimeout(updLoad,3000); }
+// a button was pressed: what = check / retry / back. Only that word is sent. -> true when the Pi took the request
+async function updAsk(what){ let ok=false;
+  try{ ok=(await api("api/update/"+what,{})).ok; }catch(e){}
+  await updLoad(); return ok; }
 /* ==SHARED-END== */
 // a typed number: plain digits with one . or , only (not "0x10", "1e3", "+5"); anything else -> NaN (same rule as /home)
 const numTyped=s=>{ s=String(s==null?"":s).trim().replace(",","."); return /^-?\d+(\.\d+)?$/.test(s)?Number(s):NaN; };
@@ -729,7 +963,7 @@ const I18N = {
     demo_title:"Show demo data (on/off)",
     // ---- sequences tab ----
     tab_live:"Overview", tab_seq:"Step by step",
-    seq_derived:"The highlighted card shows what the boiler is doing now. The time bar is an estimate.",
+    seq_derived:"The highlighted card shows what the boiler is doing now. The time bar is an estimate.", seq_none:"Now {st}: none of these steps is active.",
     started_by:"Started by", stopped_by:"Stopped by", reset_by:"Reset by",
     ev_ar_attempt:"Auto alarm reset: resetting alarm {a}", ev_ar_saved:"Auto alarm reset restarted the boiler (alarm {a})",
     ev_ar_gave_up:"Auto alarm reset gave up — alarm {a} remains", ev_dropped:"Command not sent: {w}", ev_web_reset:"Alarm {n} reset from the web page (owner confirmed)",
@@ -865,7 +1099,7 @@ const I18N = {
     demo_title:"Vis demo-data (til/fra)",
     // ---- sekvenser ----
     tab_live:"Overblik", tab_seq:"Trin for trin",
-    seq_derived:"Det fremhævede kort viser, hvad kedlen laver nu. Tidslinjen er et skøn.",
+    seq_derived:"Det fremhævede kort viser, hvad kedlen laver nu. Tidslinjen er et skøn.", seq_none:"Nu {st}: ingen af disse trin er aktive.",
     started_by:"Startet af", stopped_by:"Stoppet af", reset_by:"Nulstillet af",
     ev_ar_attempt:"Automatisk alarmnulstilling: nulstiller alarm {a}", ev_ar_saved:"Automatisk alarmnulstilling genstartede kedlen (alarm {a})",
     ev_ar_gave_up:"Automatisk alarmnulstilling opgav — alarm {a} bliver stående", ev_dropped:"Kommando ikke sendt: {w}", ev_web_reset:"Alarm {n} nulstillet fra websiden (ejeren bekræftede)",
@@ -1041,6 +1275,7 @@ Object.assign(I18N.en, {
   wm_st_resting:"On · resting, next start {n}", wm_st_served:"On · start time already used, next start {n}", wm_st_pending:"On · start sent, waiting for the boiler",
   wm_st_busy:"On · the boiler is busy (starting or pausing)", wm_st_alarm:"On · boiler in ALARM, waiting", wm_st_gave_up:"On · start failed 3 times, tries again at the next start time",
   wm_st_no_link:"On · no data from the boiler", wm_st_soon:"On · the next period starts within 30 min: the burner carries on (no web pause)", wm_st_not_armed:"On · but remote start is not switched on in the program",
+  wm_st_keep:"On · keeping warm now ({name})", wm_st_keep_wait:"On · keeping warm ({name}): starts again when the boiler has cooled {c} °C",
   vv_title:"Hot-water tank sensor (your own)", vv_source:"Where the temperature comes from",
   vv_age:"Use the safe value after", vv_safe:"Safe value when no reading",
   vv_src_mqtt:"Home Assistant (MQTT)", vv_src_http:"A script on this monitor", vv_src_onewire:"Sensor on the monitor (DS18B20)",
@@ -1169,6 +1404,7 @@ Object.assign(I18N.da, {
   wm_st_resting:"Til · hviler, næste start {n}", wm_st_served:"Til · starttiden er brugt, næste start {n}", wm_st_pending:"Til · start sendt, venter på kedlen",
   wm_st_busy:"Til · kedlen er i gang (starter eller holder pause)", wm_st_alarm:"Til · kedlen er i ALARM, venter", wm_st_gave_up:"Til · start mislykkedes 3 gange, prøver igen ved næste starttid",
   wm_st_no_link:"Til · ingen data fra kedlen", wm_st_soon:"Til · næste periode starter inden 30 min: brænderen fortsætter (ingen webpause)", wm_st_not_armed:"Til · men fjernstart er ikke slået til i programmet",
+  wm_st_keep:"Til · holder varmen nu ({name})", wm_st_keep_wait:"Til · holder varmen ({name}): starter igen, når kedlen er kølet {c} °C af",
   vv_title:"VVB-føler (din egen)", vv_source:"Hvor temperaturen kommer fra",
   vv_age:"Brug sikker værdi efter", vv_safe:"Sikker værdi uden måling",
   vv_src_mqtt:"Home Assistant (MQTT)", vv_src_http:"Et script på denne monitor", vv_src_onewire:"Føler på monitoren (DS18B20)",
@@ -1864,7 +2100,9 @@ function renderSeq(d){
   const wrap=document.getElementById("seqWrap"); if(!wrap) return;
   const S=(I18N[LANG]||I18N.en).seqs;
   const cur = d?d.state:null;
-  let html = `<div class="seqnote">${t("seq_derived")}</div>` + safetyCard(d);   // 1 Hz safety scan on top
+  // e.g. RUNNING (4) has no card: say so instead of pointing at a highlighted card that is not there
+  const none = cur!=null && !SEQDEF.some(def=>def.state!=null && cur===def.state) && !(ASH && ASH.out===1);
+  let html = `<div class="seqnote">${t("seq_derived")}${none?" <b>"+esc(t("seq_none",{st:stateName(cur)}))+"</b>":""}</div>` + safetyCard(d);   // 1 Hz safety scan on top
   SEQDEF.forEach(def=>{
     const s=S[def.id]; if(!s) return;
     const ashOut=def.id==="ash" && ASH && ASH.out===1;
@@ -1996,6 +2234,7 @@ async function poll(){
     ["transitions","events","prealarm","labels","warm","ash_plate","weather","schedule","auto_reset","warnings","remote","vvb","cfg","minmode","cfg_sync","cfg_changes"].forEach(k=>{ if(k in j) liveSlow[k]=j[k]; else if(k in liveSlow){ if(j.hot&&j.hot[k]) liveSlow[k]=Object.assign({},liveSlow[k],j.hot[k]); j[k]=liveSlow[k]; } });
     liveTV=j.tv||"";
     if(Array.isArray(j.history)&&j.history.length) liveSince=Math.max(liveSince,j.history[j.history.length-1].epoch||0);
+    monVer=j.version||monVer;
     setTxt("footVer", j.version?"Version "+j.version:"");   // same word in English and Danish
     const firstSrv=!(SERVER&&SERVER.labels);
     SERVER={transitions:j.transitions, prev_state:j.prev_state, prealarm:j.prealarm,
@@ -2199,7 +2438,7 @@ function setLang(l){
   LANG=l; try{ localStorage.setItem("burner_lang",l); }catch(e){}
   ALARM = ALARM_NAMES[l] || ALARM_NAMES.en;
   document.querySelectorAll("#langSel button").forEach(b=>b.classList.toggle("on", b.dataset.l===l));
-  applyStatic(); buildFSM(); renderLog();
+  applyStatic(); buildFSM(); renderLog(); updDraw();
   if(lastRec) render(lastRec, lastMode); else renderSeq(null);
   if(activeTab==="opt"){ renderAshTurns(); renderCfgChanges(); loadOptimiser(); }   // Analysis cards hold words: redraw them in the new language now
 }
@@ -2367,7 +2606,8 @@ function renderWarm(f){
   LASTWM=f||LASTWM; const el=document.getElementById("wmStatus"); if(!el) return;
   if(!f||!f.enabled){ el.innerHTML=`<span style="color:var(--dim)">${esc(t("wm_off"))}</span>`; }
   else { const c=(f.status||{}).code, nx=f.next_start?new Date(f.next_start*1000).toLocaleDateString(LOC(),{weekday:"short"})+" "+clock(f.next_start):"—";
-    const txt=t("wm_st_"+c,{n:nx,p:f.stop_pct})!=="wm_st_"+c?t("wm_st_"+c,{n:nx,p:f.stop_pct}):(f.status||{}).text||"";
+    const sp=Object.assign({}, (f.status||{}).p||{}, {n:nx,p:f.stop_pct}), d=I18N[LANG]||I18N.en;   // the server sends a code + params; its English text is only the last fallback
+    const txt=(d["wm_st_"+c]!=null||I18N.en["wm_st_"+c]!=null)?t("wm_st_"+c,sp):(f.status||{}).text||"";
     el.innerHTML=`<b style="color:${["alarm","gave_up","no_link","not_armed"].includes(c)?"var(--warn)":"var(--ok)"}">${esc(txt)}</b>`; }
   const h=(f&&f.history)||[];
   document.getElementById("wmHist").textContent=h.length?t("wm_hist")+" "+h.slice(-4).reverse().map(x=>hhmm(x.epoch)+" "+t("wm_did_"+x.what)).join(" · "):"";
@@ -2815,10 +3055,16 @@ function scatter(canvas, pts, xLabel, yLabel, xTick){
     else { c.beginPath(); c.arc(px,py,4.5,0,Math.PI*2); c.fill(); }
   });
 }
+let monVer="";                  // the monitor's version (from status.json), for the lighting report
+document.addEventListener("click",e=>{ const b=e.target.closest('[data-lh="copy"]');
+  if(b&&lastIgR&&lastIgR.help) lhCopy(lhReport(lastIgR.help,monVer),b); });
 let lastIgR=null;   // kept so the table can be drawn again once the 'Started by' names arrive with the first status poll
 function renderIgnitions(r){
   lastIgR=r;
   const recs=(r.records||[]), batches=r.batches||[];
+  const lh=document.getElementById("lightHelp");            // "Trouble lighting?" (read only; nothing is sent to the boiler)
+  lh.style.display=r.help?"":"none";
+  lh.innerHTML=r.help?lhHTML(r.help,{warn:"var(--warn)",dim:"var(--dim)",line:"var(--edge)"},"guide#trouble-after-upgrade"):"";
   document.getElementById("igBatchNow").textContent=t("ig_batch_now",{b:r.current_batch||"—"});
   const leg=document.getElementById("igLegend");
   const names=[...new Set(recs.map(x=>x.batch))];
@@ -2952,6 +3198,16 @@ let liveSince=0, liveTV="", liveSlow={};
 document.addEventListener("visibilitychange",()=>{ if(document.hidden) return;   // back: catch up at once
   restart(); if(activeTab==="sch") loadSchedule(false); if(activeTab==="opt") loadOptimiser(); });
 start();
+// ---- software update card (shared block: UPD_TXT, updCardHTML, updLoad, updAsk); only on a Pi with the updater
+function updDraw(){ const c=document.getElementById("updCard"); if(!c) return; c.hidden=!UPD; c.innerHTML=updCardHTML(["",""]); }
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-upd]"); if(!b) return;
+  const what=b.dataset.upd;
+  if(what==="back"&&!(await askConfirm(updT("back_confirm",{prev:UPD&&UPD.view.back})))) return;
+  if(!(await updAsk(what))) await askConfirm(updT("send_fail"));
+});
+updLoad();
+setInterval(()=>{ if(!document.hidden&&!UPD_BUSY) updLoad(); },30*60000);
 </script>
 </body>
 </html>

@@ -99,6 +99,15 @@ for c in sorted(codes):
 for c in ("waiting", "clearing", "restarted", "not_allowed", "not_burning"):   # the ones /home shows next to an alarm
     check(f"home.html: auto reset status '{c}' in EN and DA", both("home.html", "ar_" + c))
 check("home.html: auto reset 'gave_up' in EN and DA", both("home.html", "ar_gave"))
+# heating plan (warm mode) status: /classic Settings shows wm_st_<code>; the server's English text is only a fallback
+codes = set(re.findall(r'self\._set\("(\w+)"', part("WarmMode")))
+check("warm mode status codes found", {"keep", "keep_wait", "resting", "low"} <= codes, str(codes))
+for c in sorted(codes):
+    check(f"dashboard.html: warm mode status '{c}' in EN and DA", both("dashboard.html", "wm_st_" + c))
+codes = set(re.findall(r'self\._set\("(\w+)"', part("Scheduler")))
+check("start window status codes found", {"running", "cooldown", "blocked"} <= codes, str(codes))
+for c in sorted(codes):
+    check(f"dashboard.html: start window status '{c}' in EN and DA", both("dashboard.html", "st_" + c))
 
 print("ALL PASS" if not FAILED else f"{FAILED} FAILED")
 sys.exit(1 if FAILED else 0)

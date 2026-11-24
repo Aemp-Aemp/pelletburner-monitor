@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build the "ready SD card" folder and zip for the easy install (works on Windows, macOS and Linux).
 
-    python scripts/make_card.py --repo-url https://github.com/Aemp-Aemp/pelletburner-monitor.git
+    python scripts/make_card.py
+    python scripts/make_card.py --repo-url https://github.com/<account>/<your copy>.git     (a fork)
 
 Writes dist/pelletpi-card/ and dist/pelletpi-card.zip. People unzip it onto the card's boot drive right after
 Raspberry Pi Imager has written the card. Contents:
@@ -85,13 +86,13 @@ def build(out, repo_url=None, ref="HEAD", with_app=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=os.path.join(ROOT, "dist"), help="output folder (default dist/)")
-    ap.add_argument("--repo-url", help="public repository URL written into settings.txt (for updates)")
+    ap.add_argument("--repo-url", help="https address of your own copy, written into settings.txt (for updates). "
+                    "Default: the project's public repository, as in pi/firstboot/settings.txt")
     ap.add_argument("--ref", default="HEAD", help="git tag or commit to pack as the program (default HEAD)")
     ap.add_argument("--no-app", action="store_true", help="leave out app.tar.gz (the Pi then clones REPO_URL)")
     a = ap.parse_args()
-    if not a.repo_url:
-        print("note: no --repo-url: auto-update stays off until REPO_URL is set in pelletpi/settings.txt",
-              file=sys.stderr)
+    if a.repo_url and not a.repo_url.startswith("https://"):
+        sys.exit("--repo-url must start with https:// (the Pi's updater refuses anything else)")
     card, z = build(a.out, a.repo_url, a.ref, not a.no_app)
     print(f"card folder: {card}\nzip:         {z}")
 

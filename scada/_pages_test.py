@@ -107,6 +107,27 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
                     want = {"en": "Last turn", "da": "Sidste drejning"}
                     check(f"[{lang}] classic#opt: ash plate line follows a language switch ({r['b']})",
                           r["a"].startswith(want[lang]) and r["b"].startswith(want[other]))
+                if (page, tab) == ("classic", "seq"):
+                    # RUNNING (4) has no card: the note says no step is active, instead of pointing at a highlighted card
+                    r = pg.evaluate("""()=>{const old=lastRec; renderSeq({state:4}); const a=document.querySelector('#seqWrap .seqnote').innerText;
+                        renderSeq({state:5}); const b=document.querySelector('#seqWrap .seqnote').innerText,
+                        n=document.querySelectorAll('#seqWrap .seqcard.active').length; renderSeq(old); return {a,b,n};}""")
+                    want = {"en": "none of these steps is active", "da": "ingen af disse trin er aktive"}[lang]
+                    check(f"[{lang}] classic#seq: RUNNING says no step is active ({r['a'][-45:]})", want in r["a"])
+                    check(f"[{lang}] classic#seq: PAUSE highlights its card, no 'none' line", r["n"] == 1 and want not in r["b"])
+                if (page, tab) == ("classic", "sch"):
+                    # the heating plan status comes as a code + params: the words are the page's, in its language
+                    r = pg.evaluate("""()=>{const old=LASTWM, o=v=>({enabled:true, history:[], next_start:null, stop_pct:20, status:v});
+                        renderWarm(o({code:"keep", text:"keeping warm (Bad)", p:{name:"Bad"}}));
+                        const a=document.getElementById('wmStatus').innerText;
+                        renderWarm(o({code:"keep_wait", text:"x", p:{name:"Bad", c:8}}));
+                        const b=document.getElementById('wmStatus').innerText;
+                        renderWarm(o({code:"new_code", text:"server text"}));
+                        const c=document.getElementById('wmStatus').innerText; if(old) renderWarm(old); return {a,b,c};}""")
+                    want = {"en": ("keeping warm now (Bad)", "cooled 8 °C"), "da": ("holder varmen nu (Bad)", "kølet 8 °C af")}[lang]
+                    check(f"[{lang}] classic#sch: heating plan 'keep' in the page language ({r['a']})", want[0] in r["a"])
+                    check(f"[{lang}] classic#sch: heating plan 'keep_wait' with its numbers ({r['b']})", want[1] in r["b"])
+                    check(f"[{lang}] classic#sch: an unknown code still shows the server text", r["c"] == "server text")
                 if (page, tab) == ("classic", "disc"):
                     n = pg.evaluate("document.getElementById('discCards').children.length")
                     check(f"[{lang}] classic#disc: one card per discovery ({n} of {cards})", cards > 0 and n == cards)
@@ -173,6 +194,16 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
             check(f"[{lang} {view}] history: the short burn is a light part of its bar, with a legend", hi["parts"] == 1 and len(hi["leg"]) > 10 and not hi["wide"])
             check(f"[{lang} {view}] history: burner health has its fan line ({hi['fan'][:40]!r})", len(hi["fan"]) > 8 and "{" not in hi["fan"])
             texts[("card", "history", lang)] = hi["leg"] + hi["fan"]
+            if view == "phone":
+                # the day chart on a phone: crowded start times use a third label row instead of losing one (made-up plan)
+                p2.evaluate("location.hash='#now'")
+                p2.wait_for_selector("#v-now", state="visible", timeout=15000)
+                lb = p2.evaluate("""()=>{const old=S.warm, D=new Date(nowEp()*1000); D.setHours(0,0,0,0); const d=D.getTime()/1000,
+                    P=[[5,7,"keep"],[9,9.5,"start"],[13,13.5,"start"],[16.5,19.5,"keep"],[17.25,17.75,"start"]].map(([a,b,k])=>({a:d+a*3600,b:d+b*3600,kind:k,name:"x"}));
+                    S.warm={enabled:true, plan:P}; const el=document.getElementById('todayCard'); renderToday(el,false);
+                    const r=[...el.querySelectorAll('svg text[font-size="10.5"]')].map(t=>t.textContent); S.warm=old; return r;}""")
+                check(f"[{lang} phone] now: every plan time has its label on the day chart ({lb})",
+                      all(any(h in x for x in lb) for h in ("05:00", "09:00", "13:00", "16:30", "17:15")))
             p2.close()
             if view == "phone":
                 pg.click("#stPane .st-back")

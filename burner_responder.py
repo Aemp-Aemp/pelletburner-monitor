@@ -110,6 +110,11 @@ class Module:
         self.latest_cfg = None         # last cfg_data_1 snapshot
         self.hist = collections.deque(maxlen=720)   # chart history rows
         self.last_rx = 0.0             # epoch of the last frame received from the controller
+        self.started = time.time()     # epoch this program started (shown; the clock can jump at NTP sync)
+        self.started_mono = time.monotonic()   # the updater's "quiet" rule uses this: it never jumps
+        self.last_rx_mono = 0.0        # monotonic time of the last frame (0 = none yet)
+        self.rx_mark = None            # data/last_rx: touched while frames arrive (the updater: still talking?)
+        self._rx_mark_at = None
         # ---- optional extensions (burner_ext.py), all None unless enabled on the command line ----
         self.store = None              # Store: history/events on disk
         self.tracker = None            # Tracker: transition log + pre-alarm snapshot
@@ -395,6 +400,25 @@ class Module:
         except Exception as e:
             print(f"# extension error: {e!r}", flush=True)
 
+    def note_rx(self):
+        """A frame from the controller: for the SCADA "connected" flag, and data/last_rx for the updater. The page and
+        the serial link are independent: the file shows the monitor still talks to the boiler when its page is silent.
+        Written at most every 30 s, in one move; a write error never stops the serial loop."""
+        self.last_rx = time.time()
+        m = self.last_rx_mono = time.monotonic()
+        if self.rx_mark and (self._rx_mark_at is None or m - self._rx_mark_at >= 30):
+            self._rx_mark_at = m
+            try:
+                tmp = self.rx_mark + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(f"{self.last_rx:.0f}\n")
+                os.replace(tmp, self.rx_mark)
+            except OSError:
+                try:                                    # a full card: the file's time needs no free space
+                    os.utime(self.rx_mark)
+                except OSError:
+                    pass
+
     def feed_snapshot(self, since=None, tv=None):
         """Thread-safe snapshot for the HTTP server. since (epoch): only the history rows after it (the pages keep
         the rows they already have, so each poll is small); None = all rows (about 2 h, ~250 kB).
@@ -406,6 +430,9 @@ class Module:
             out = {
                 "connected": bool(self.last_rx) and (time.time() - self.last_rx < 60),
                 "last_rx": self.last_rx,
+                "started": self.started,
+                "uptime": round(time.monotonic() - self.started_mono, 1),
+                "rx_age": round(time.monotonic() - self.last_rx_mono, 1) if self.last_rx_mono else None,
                 "now": time.time(),
                 "version": burner_ext.MONITOR_VERSION,
                 "latest": self.latest,
@@ -807,18 +834,21 @@ def start_http(mod, port, log, host="127.0.0.1", allowed_hosts=()):
                                 "keys": sorted(body.keys()) if isinstance(body, dict) else []})
                 return self._json(self._code(ok, msg), dict({"ok": ok, "msg": msg, "settings": mod.settings.public()},
                                                             **self._disk(msg)))
-            if path == "/api/update/check":
-                # "Check for update": leave a request file; the Pi's updater (systemd path unit) does the rest and
-                # only swaps versions while the burner is off or waiting. Nothing is downloaded by this program.
+            if path in ("/api/update/check", "/api/update/retry", "/api/update/back"):
+                # "Check for update" / "Try again" / "Go back": leave a one-word request file; the Pi's updater
+                # (systemd path unit) does the rest and only swaps versions while the burner is off or waiting.
+                # The word comes from the route, never from the body: no address, version or command can be sent.
+                # Nothing is downloaded by this program.
+                import burner_ext
+                if REPLAY is not None:
+                    return self._json(403, {"ok": False, "msg": "replay - no updates here"})
                 d = getattr(mod.store, "dir", None)
                 if not d:
                     return self._json(400, {"ok": False, "msg": "no data folder"})
-                try:
-                    with open(os.path.join(d, "update-request"), "w") as fh:
-                        fh.write(str(int(time.time())))
-                except OSError:
-                    return self._json(500, {"ok": False, "msg": "could not write the request"})
-                return self._json(200, {"ok": True, "msg": "checking for an update"})
+                if (burner_ext.update_info(d).get("view") or {}).get("busy"):       # one thing at a time
+                    return self._json(409, {"ok": False, "msg": "the updater is already at work"})
+                ok, msg = burner_ext.update_request(d, path.rsplit("/", 1)[1])
+                return self._json(200 if ok else 500, {"ok": ok, "msg": msg})
             nt = getattr(mod, "notifier", None)
             if path.startswith("/api/ntfy/") and nt:
                 # phone alerts: test message, certificate update / upload (settings go through /api/settings)
@@ -958,11 +988,9 @@ def start_http(mod, port, log, host="127.0.0.1", allowed_hosts=()):
                         return self._json(200, {"ok": False, "places": [], "msg": "no answer from the weather service (internet?)"})
                 if path == "/api/update":
                     # version / update state, written by the Pi's updater (pi/pelletpi-update.sh) into the data dir
-                    try:
-                        with open(os.path.join(mod.store.dir, "update.json"), encoding="utf-8") as fh:
-                            return self._json(200, json.load(fh))
-                    except (AttributeError, TypeError, OSError, ValueError):
-                        return self._json(200, {"current": None})
+                    # plus "view": the state in one word for the pages (burner_ext.update_info)
+                    import burner_ext
+                    return self._json(200, burner_ext.update_info(getattr(mod.store, "dir", None)))
                 if path == "/api/insights":
                     # auto-generated discoveries (scada/insights_gen.py writes data/insights.json); read-only file.
                     # Fallback: scada/insights.json (where older versions wrote it).
@@ -1260,6 +1288,7 @@ def main():
     burner_common.set_write_log(log)                  # one line when the disk starts failing, one when it works again
     if a.data_dir:
         mod.store = X.Store(a.data_dir, a.keep_days, log)
+        mod.rx_mark = os.path.join(a.data_dir, "last_rx")
         for r in mod.store.load_rows(mod.hist.maxlen):
             mod.hist.append(r)
         log(f"# data: {a.data_dir} (keep {a.keep_days:g} days); {len(mod.hist)} history rows reloaded")
@@ -1555,7 +1584,7 @@ def main():
                 n_in += 1
                 if mod.cfg_sync and mod.last_rx and time.time() - mod.last_rx > 8:   # a board reboot takes ~10-15 s
                     mod.cfg_sync.request_check(f"controller was silent {time.time() - mod.last_rx:.0f} s (power cycle?)")
-                mod.last_rx = time.time()          # for the SCADA "connected" flag
+                mod.note_rx()                      # the SCADA "connected" flag, data/last_rx for the updater
                 if f.hdr1 is not None and not f.crc_ok: n_bad += 1
                 if not a.no_log_frames:
                     log(f"{ts()}  IN   {f.describe()}   | {f.raw.hex(' ')}")

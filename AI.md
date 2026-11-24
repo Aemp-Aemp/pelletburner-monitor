@@ -108,8 +108,12 @@ through `/api/settings`. Changes in Settings are saved at once.
 - **Settings without code changes:** copy `.env.example` to `.env`, remove `#` in front of a line, then
   `docker compose up -d`. Home Assistant: `BURNER_MQTT`, `BURNER_MQTT_USER`, `BURNER_MQTT_PASS` (see README).
 - **Updating:** after the easy install or `pi/install.sh`, the Pi installs new releases by itself at night,
-  but only while the burner is off or waiting. Now: `sudo pelletpi-update now`. Off: `AUTO_UPDATE=no` in
-  `pelletpi/settings.txt` on the card. By hand in a git copy, while the burner is off or waiting:
+  but only while the burner is off or waiting. From the page: Settings → About this monitor → **Check for
+  update** (works without the nightly update; no internet: share it from a phone hotspot the Pi knows). The new
+  version is tested after the swap; if it fails the Pi goes back by itself, and **Go back** is there for 14
+  days. Now: `sudo pelletpi-update now`, back: `sudo pelletpi-update back`. Off: `AUTO_UPDATE=no` in
+  `pelletpi/settings.txt` on the card. The page can only ask for check / retry / back (`data/update-request`,
+  one word); state for the page is `data/update.json` (`burner_ext.update_info`). By hand in a git copy, while the burner is off or waiting:
   `git pull`, then `docker compose build`, then `docker compose up -d`. Build first: when the boiler hears
   nothing for about 50 s it shows alarm 15 "External IO", which must be reset on the boiler.
 - **Backups:** everything is in `~/pelletburner-monitor/data/` on the Pi: `settings.json` (+ `.bak`),

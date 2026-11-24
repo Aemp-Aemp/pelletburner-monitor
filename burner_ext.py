@@ -804,6 +804,93 @@ def _bin_tpl(key):
     return (f"{{% if value_json.{key} is none %}}None{{% elif value_json.{key} %}}ON{{% else %}}OFF{{% endif %}}")
 
 
+# ---- software update (Raspberry Pi): the page only leaves a one-word request; pi/pelletpi-update.sh does the work
+UPDATE_REQUESTS = ("check", "retry", "back")
+UPDATE_PHASES = ("check", "download", "waiting", "install", "back")
+UPDATE_CODES = ("uptodate", "offline", "no_release", "no_repo", "updated", "rolled_back", "build_failed", "disk_full",
+                "busy", "later", "available", "bad_skipped", "went_back", "no_previous", "back_busy", "back_failed",
+                "error", "local_changes", "unknown_base", "tidy_wait")
+UPDATE_WHY = ("no_answer", "status", "settings", "boiler", "swap")
+
+
+def update_request(data_dir, what):
+    """Leave the page's request for the Pi's updater: one fixed word in <data dir>/update-request. Returns (ok, msg).
+    Nothing else can be asked for: no address, no version, no command."""
+    if what not in UPDATE_REQUESTS:
+        return False, "unknown request"
+    if not data_dir:
+        return False, "no data folder"
+    path = os.path.join(data_dir, "update-request")
+    try:
+        with open(path + ".tmp", "w", encoding="ascii") as fh:
+            fh.write(what + "\n")
+        os.replace(path + ".tmp", path)
+    except OSError:
+        return False, "could not write the request"
+    return True, "asked"
+
+
+def _upd_ver(v):
+    """A version name from update.json as short plain text, or None."""
+    if not isinstance(v, str):
+        return None
+    v = "".join(c for c in v[:40] if c.isalnum() or c in "._-+")
+    return v or None
+
+
+def update_info(data_dir, now=None):
+    """What the pages show about updates: the updater's data/update.json plus "view" - the state in one word
+    ("key", the pages hold the texts), whether it is still at work ("busy"), which button fits ("btn": check /
+    install / retry) and the version "Go back" would return to ("back"). {"current": None} = no updater here."""
+    try:
+        path = os.path.join(data_dir, "update.json")
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+        age = (now or time.time()) - os.path.getmtime(path)
+    except (TypeError, OSError, ValueError):
+        return {"current": None}
+    if not isinstance(d, dict) or not _upd_ver(d.get("current")):
+        return {"current": None}
+    now = now or time.time()
+    try:
+        req_age = now - os.path.getmtime(os.path.join(data_dir, "update-request"))
+    except OSError:
+        req_age = None
+    cur, latest = _upd_ver(d.get("current")), _upd_ver(d.get("latest"))
+    prev = d.get("previous") if isinstance(d.get("previous"), dict) else {}
+    try:
+        prev_v = _upd_ver(prev.get("version")) if float(prev.get("until") or 0) > now else None
+    except (TypeError, ValueError):
+        prev_v = None
+    phase, code = d.get("phase"), d.get("code")
+    old = "phase" not in d and "code" not in d                  # written by the first updater (before "Go back")
+    busy, why = False, None
+    # the updater touches the file while it waits; the download + build is one long step
+    working = not old and phase in UPDATE_PHASES and age <= (3600 if phase == "download" else 900)
+    if working:
+        key, busy = "ph_" + phase, True
+    elif req_age is not None and req_age < 90:
+        key, busy = "asked", True
+    elif req_age is not None:
+        key = "no_updater"                                      # nobody took the request: no updater on this machine
+    elif old:
+        key = "old"
+    elif phase in UPDATE_PHASES:
+        key = "interrupted"
+    else:
+        key = code if code in UPDATE_CODES else "error"
+        if key == "rolled_back" and d.get("why") in UPDATE_WHY:
+            why = d["why"]
+    btn = None if busy else "install" if key in ("available", "later", "unknown_base") else "retry" if key == "bad_skipped" else "check"
+    out = {"current": cur, "latest": latest, "available": bool(d.get("available")), "auto": bool(d.get("auto")),
+           "checked": d.get("checked") if isinstance(d.get("checked"), (int, float)) else None,
+           "result": str(d.get("result") or "")[:200],
+           "view": {"key": key, "busy": busy, "btn": btn, "back": None if busy or old else prev_v, "why": why,
+                    "current": cur, "latest": latest, "to": _upd_ver(d.get("to")) or latest,
+                    "from": _upd_ver(d.get("from"))}}
+    return out
+
+
 def read_pi_health(data_dir, max_age_s=600):
     """Newest line of <data dir>/pi-health-*.jsonl (written every minute by pi/pi_health.py on the Raspberry Pi),
     or None when there is none or it is older than max_age_s."""

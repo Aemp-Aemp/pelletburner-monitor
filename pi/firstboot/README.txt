@@ -16,3 +16,5 @@ Join it with your phone, open http://10.42.0.1:8099 and pick your Wi-Fi (new, no
 
 Auto-update: every night the Pi installs a new release, but only while the burner is off or
 waiting. To turn it off, set AUTO_UPDATE=no in pelletpi/settings.txt.
+The page also has a "Check for update" button (Settings, About this monitor). No internet at
+the boiler: share it from your phone's hotspot for a few minutes and press the button.

@@ -3,7 +3,9 @@
 #   sudo REPO_URL=https://github.com/Aemp-Aemp/pelletburner-monitor.git sh pi/install-auto-update.sh
 # The easy install (pi/firstboot) runs it by itself. Safe to run again.
 # - every night between 01:00 and 06:00 it checks for a new release and installs it when the burner is
-#   off or waiting; the "Check for update" button on the page does the same at once
+#   off or waiting; the "Check for update" button on the page does the same at once, and "Go back" returns
+#   to the version from before the last update
+# - a normal update runs this file again by itself, so the updater on the Pi follows the program
 # - turn it off: AUTO_UPDATE=no in pelletpi/settings.txt on the card's boot drive, or in
 #   /etc/default/pelletpi-update
 set -e
@@ -12,8 +14,10 @@ APP=$(cd "$HERE/.." && pwd)
 if [ -z "$REPO_URL" ]; then
   REPO_URL=$(git -c safe.directory="$APP" -C "$APP" remote get-url origin 2>/dev/null || true)
 fi
-sed 's/\r$//' "$HERE/pelletpi-update.sh" > /usr/local/bin/pelletpi-update
-chmod 755 /usr/local/bin/pelletpi-update
+# written next to the old one and moved in place: an update that is running keeps its own copy
+sed 's/\r$//' "$HERE/pelletpi-update.sh" > /usr/local/bin/pelletpi-update.new
+chmod 755 /usr/local/bin/pelletpi-update.new
+mv -f /usr/local/bin/pelletpi-update.new /usr/local/bin/pelletpi-update
 
 # Keep an existing AUTO_UPDATE choice when this runs again.
 AUTO=yes
@@ -43,22 +47,28 @@ cat > /etc/systemd/system/pelletpi-update.timer <<'EOF'
 Description=Pellet burner monitor: update check every night (hourly 01-05, waits while the burner works)
 [Timer]
 OnCalendar=*-*-* 01..05:10:00
+# also a few minutes after every start: tidies up an update that a power cut interrupted
+OnBootSec=5min
 RandomizedDelaySec=30min
 Persistent=false
 [Install]
 WantedBy=timers.target
 EOF
 
-cat > /etc/systemd/system/pelletpi-update-check.service <<'EOF'
+cat > /etc/systemd/system/pelletpi-update-check.service <<EOF
 [Unit]
-Description=Pellet burner monitor: update check asked for on the page
+Description=Pellet burner monitor: update or go back, asked for on the page
 After=docker.service
 [Service]
 Type=oneshot
+# after the download the updater may wait hours for the burner to be off
+TimeoutStartSec=infinity
+# where the page leaves its request (removed even when the settings file is broken)
+Environment=PELLETPI_REQ=$APP/data/update-request
 ExecStart=/usr/local/bin/pelletpi-update check
 EOF
 
-# The page's "Check for update" button leaves data/update-request; this starts the check.
+# The page's buttons leave data/update-request (one word: check, retry or back); this starts the updater.
 cat > /etc/systemd/system/pelletpi-update-check.path <<EOF
 [Unit]
 Description=Pellet burner monitor: watch for the page's update request
@@ -71,5 +81,7 @@ EOF
 
 mkdir -p "$APP/data"
 systemctl daemon-reload
-systemctl enable --now pelletpi-update.timer pelletpi-update-check.path
+systemctl enable pelletpi-update.timer pelletpi-update-check.path
+# restarted, so that changed units take effect now (a running update is not stopped by this)
+systemctl restart pelletpi-update.timer pelletpi-update-check.path
 echo "Auto-update installed for $APP (source: ${REPO_URL:-none}, auto: $AUTO)."

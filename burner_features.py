@@ -1149,7 +1149,7 @@ class IgnitionLog:
                         "batch": self.batch_now(t), "cause": ev.get("cause"),
                         "source": ev.get("source"), "after_alarm": bool(ev.get("after_alarm")),
                         # the ignition settings in force (TÆNDBRÆNDSEL, TÆND LUFT, OPVARMNING, TIMEOUT, MAX DOSER,
-                        # SUPLERING, INTERVAL) - so attempts with different settings can be compared
+                        # SUPPLERING, INTERVAL) - so attempts with different settings can be compared
                         "cfg": {k: raw.get(k) for k in IGN_CFG if k in raw},
                         "auger_s": 0.0, "rpm": [], "first_lux_s": None, "flame_s": None, "peak_lux": None,
                         "_last": t}
@@ -1254,6 +1254,13 @@ class IgnitionLog:
             s.update(flame_n=len(fl), flame_min=round(statistics.median(fl), 2) if fl else None,
                      flame_max_min=max(fl) if fl else None)
         typ, typ_n, bsince, older = usual_flame(self.records, self.settings)
+        try:                                       # the lighting help card (read only): never breaks the report
+            raw = (getattr(self.mod, "latest_cfg", None) or {}).get("raw") or {}
+            sw = (self.settings.get("controller_info") or {}).get("sw")
+            light_help = lighting_help(recs, raw, sw, typ, sync=bool(getattr(self.mod, "cfg_sync", None)))
+        except Exception as e:
+            self.log(f"# lighting help error: {e!r}")
+            light_help = None
         # same comparison per ignition-settings combination (what helps ignition?)
         by_cfg = {}
         withcfg = [r for r in recs if not r.get("relight") and r.get("cfg")]
@@ -1272,7 +1279,7 @@ class IgnitionLog:
         settings.sort(key=lambda s: (-(s["ok"] / s["n"]), s["median_min"] if s["median_min"] is not None else 1e9))
         out = {"records": recs, "batches": batches, "current_batch": show(self.batch_now()), "stats": stats,
                "by_settings": settings, "typical_flame_min": typ, "typical_flame_n": typ_n,
-               "typical_days": TYPICAL_DAYS}
+               "typical_days": TYPICAL_DAYS, "help": light_help}
         if bsince:     # the boiler type changed: "usual" = starts after it (use), or older starts until 3 (old)
             out["baseline"] = {"since": bsince, "why": (self.settings.get("baseline") or {}).get("why") or "",
                                "use": not older, "old": older}
@@ -1333,6 +1340,94 @@ def baseline_split(recs, since):
     if sum(1 for r in after if lit(r)) >= TYPICAL_MIN_N:
         return after, False
     return recs, True
+
+
+# ---- Lighting help (the "Trouble lighting?" card on both pages). READ ONLY: it only compares what the boiler
+# already told us (the settings it sent, the start records). Nothing here is ever sent to the boiler.
+# Factory values per software family and boiler type (0 = 10 kW, 1 = 15 kW, 2 = 25 kW). 1.40 changed the start
+# fuel and the lighting timeout on the 10 and 15 kW types, and the fuel rate on the 15 kW.
+LIGHT_IDS = ("014", "015", "017", "018", "001", "035")      # start fuel s, ignition air %, timeout s, max doses, fuel g/h, PID P
+LIGHT_FACTORY = {
+    "1.30": {"014": (28, 28, 28), "015": (80, 80, 80), "017": (600, 600, 600), "018": (20, 20, 20),
+             "001": (2400, 3300, 5400), "035": (5, 5, 5)},
+    "1.40": {"014": (40, 40, 28), "015": (80, 80, 80), "017": (800, 800, 600), "018": (20, 20, 20),
+             "001": (2400, 3400, 5400), "035": (5, 5, 5)},
+}
+# what lit well on ONE 15 kW boiler (software 1.40): an example to compare with, not the one right answer.
+# 015 TÆND LUFT is left out: software 1.40 stores it but does not use it while lighting.
+LIGHT_WORKED = {"014": 40, "017": 800, "018": 20}
+LIGHT_SLOW_MIN = 6.0               # the lighting chart's normal band ends at 6 minutes to flame
+LIGHT_LAST_N = 10
+
+
+def sw_family(sw):
+    """'1.30' for boiler software 1.30 up to 1.40, '1.40' for 1.40 and newer, None when it is not known: not typed
+    in, not readable, or below 1.30 (e.g. "1.13", or "1.4", which could mean anything)."""
+    m = re.match(r"\s*[vV]?(\d+)\.(\d+)", str(sw or ""))
+    if not m:
+        return None
+    v = (int(m.group(1)), int(m.group(2)))
+    return None if v < (1, 30) else "1.30" if v < (1, 40) else "1.40"
+
+
+def lighting_help(records, cfg_raw, sw=None, usual=None, sync=False):
+    """What the lighting help card shows, as codes and numbers (the pages hold the words):
+    verdict  from the last 10 starts (relights left out): "few" (under 3 judged), "fails" (2 or more did not light),
+             "slow" (over 6 min to flame, or clearly over this boiler's usual), else "ok"
+    rows     each lighting setting: now / factory for this software and boiler type / worked on one 15 kW boiler,
+             mark "high" / "low" / "short" / "doses" (worth a look), "unused" (TÆND LUFT: not used by software
+             1.40, only when 1.40 or newer is known) or "diff" (not the factory value)
+    sw_known False when the software version is not typed in, not readable or below 1.30: the 1.40 values are shown
+    sync     the monitor's settings sync is on (it puts its saved values back when one is changed on the screen)
+    starts   the last 10 starts, newest first (no pellet batch names: the report is made for sharing)."""
+    def num(k):
+        try:
+            v = float((cfg_raw or {}).get(k))
+            return int(v) if v == int(v) else v
+        except (TypeError, ValueError, OverflowError):
+            return None
+    known = sw_family(sw)
+    fam, typ = known or "1.40", num("033")
+    typ = typ if typ in (0, 1, 2) else None
+    rows = []
+    for k in LIGHT_IDS:
+        now, fac = num(k), (LIGHT_FACTORY[fam][k][typ] if typ is not None else None)
+        mark = None
+        if k == "015" and known == "1.40" and now is not None:
+            mark = "unused"                      # stored, but not used by the 1.40 software (only when it is known)
+        elif now is not None:
+            if k == "018" and now < 2:
+                mark = "doses"                   # 0 = about 255 top-ups (only the timeout stops them), 1 = none
+            elif k == "014" and now >= 60:
+                mark = "high"
+            elif k == "014" and now < 28:
+                mark = "low"
+            elif k == "017" and now < 600:
+                mark = "short"
+            elif fac is not None and abs(now - fac) > 1e-9:
+                mark = "diff"
+        rows.append({"id": k, "now": now, "fac": fac, "ref": LIGHT_WORKED.get(k), "mark": mark})
+    last = [r for r in records if not r.get("relight")][-LIGHT_LAST_N:]
+    judged = [r for r in last if r.get("result") in ("ok", "failed")]
+    failed = sum(1 for r in judged if r["result"] == "failed")
+    mins = [flame_min(r) for r in judged if lit(r)]
+    med = round(statistics.median(mins), 1) if mins else None
+    if len(judged) < 3:
+        k = "few"
+    elif failed >= 2:
+        k = "fails"
+    elif med is not None and (med > LIGHT_SLOW_MIN or (usual is not None and len(mins) >= 3 and
+                                                      statistics.median(mins[-3:]) - usual > max(1.0, 0.3 * usual))):
+        k = "slow"
+    else:
+        k = "ok"
+    starts = [{"epoch": r.get("epoch"), "result": r.get("result"), "flame_min": flame_min(r) if lit(r) else None,
+               "minutes": r.get("minutes"), "alarm": r.get("alarm"),
+               "start_fuel": (r.get("cfg") or {}).get("014"), "max_doses": (r.get("cfg") or {}).get("018")}
+              for r in reversed(last)]
+    return {"verdict": {"k": k, "n": len(judged), "lit": len(mins), "failed": failed, "min": med, "usual": usual},
+            "sw": str(sw).strip() if sw else None, "family": fam, "sw_known": known is not None, "sync": bool(sync),
+            "type": typ, "rows": rows, "starts": starts}
 
 
 def batch_key(name):
@@ -2805,7 +2900,7 @@ class WarmMode:
             self.attempts, self.last_attempt = 0, 0.0
             if keep:
                 return self._set("keep_wait", f"in '{name}': waiting until the boiler cools {w['keep_restart_c']} °C",
-                                 name=name, next=nxt)
+                                 name=name, next=nxt, c=w["keep_restart_c"])
             return self._set("resting", "resting until the next start", next=nxt, by_web=bool(self.rest_since))
         if self.last_attempt and now - self.last_attempt < w["retry_wait_s"]:
             return self._set("pending", f"start sent, waiting for the boiler (attempt {self.attempts}/{w['max_attempts']})",

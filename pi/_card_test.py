@@ -97,23 +97,32 @@ check("sudo sh pi/install.sh" in readme and "sudo sh pi/install.sh" in rd("docs/
       "README.md and docs/guide.html must show 'sudo sh pi/install.sh'")
 
 st = rd("pi/firstboot/settings.txt").decode()
-check(re.search(r"^REPO_URL=.*CHANGE-ME", st, re.M), "settings.txt: REPO_URL must be the CHANGE-ME placeholder")
+# a card made from this repository must get updates: the public repository, https, no placeholder, no other account
+check(re.search(r"^REPO_URL=https://github\.com/Aemp-Aemp/pelletburner-monitor\.git$", st, re.M),
+      "settings.txt: REPO_URL must be the project's public repository")
+check("CHANGE-ME" not in st, "settings.txt: placeholder left in")
 check(re.search(r"^AUTO_UPDATE=yes$", st, re.M), "settings.txt: AUTO_UPDATE=yes missing")
 
 # ---------------------------------------------------------------- updater: the safety rules
 up = rd("pi/pelletpi-update.sh").decode()
 check("0 | 1) return 0" in up, "updater: swap must be gated on burner state 0 or 1")
-check(up.find("dc build") < up.find("dc up -d"), "updater: must build before swapping")
-check("seq 1 24" in up and "sleep 5" in up, "updater: 2-minute health check missing")
+check(0 < up.find("if ! dc build") < up.find("until safe_now; do") < up.rfind("dc up -d"),
+      "updater: must build, then wait for the burner, then swap")
+check("START_TRIES=24" in up and "STEP=5" in up and 'seq 1 "$START_TRIES"' in up, "updater: 2-minute health check missing")
+check("LINK_TRIES=60" in up and "WHY=boiler" in up and "WHY=settings" in up, "updater: boiler link / settings test missing")
+check('"" | *CHANGE-ME*) finish no_repo' in up and "https://*)" in up, "updater: REPO_URL check missing")
+check("in-progress" in up and "pelletpi-previous" in up, "updater: journal or kept previous version missing")
+check(not re.search(r"\beval\b", up) and '. "$REQ"' not in up and "source " not in up, "updater: the request file must never be run")
 check("back_to_old" in up and 'docker tag "$OLD_IMAGE"' in up, "updater: rollback missing")
 check("bad-$LATEST" in up, "updater: a failed version must not be retried")
 check("AUTO_UPDATE" in up and "flock" in up, "updater: off switch or lock missing")
 check(re.search(r"\^v\[0-9\]", up), "updater: only release tags")
 check("rm -rf" not in up and "clean -" not in up, "updater: must not delete files (the data folder stays)")
 resp = rd("burner_responder.py").decode()
-check('"/api/update"' in resp and '"/api/update/check"' in resp, "responder: /api/update routes missing")
-home = rd("scada/home.html").decode()
-check(home.count('upd_check:"') == 2, "home.html: upd_* texts must be in EN and DA")
+check('"/api/update"' in resp and '"/api/update/check"' in resp and '"/api/update/back"' in resp,
+      "responder: /api/update routes missing")
+for pg in ("scada/home.html", "scada/dashboard.html"):
+    check(rd(pg).decode().count('btn_check:"') == 2, f"{pg}: the update texts must be in EN and DA")
 
 # ---------------------------------------------------------------- no secrets, no personal data, no brand
 SECRET = re.compile(r"(?i)(\bpsk\s*=|wpa_passphrase|passwd\s*=|password\s*[:=]\s*\S|BEGIN [A-Z ]*PRIVATE KEY|"

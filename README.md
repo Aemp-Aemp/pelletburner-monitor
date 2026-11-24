@@ -18,6 +18,13 @@ open http://pelletpi.local while it installs, or put the card in a PC and open `
 Every night it installs a new release by itself, but only while the burner is off or waiting
 (turn off: `AUTO_UPDATE=no` in `pelletpi/settings.txt`). Details and the untested parts: [`pi/README.md`](pi/README.md).
 
+**Updating from the page.** Settings → About this monitor → **Check for update** checks, downloads and installs
+the newest release, also when the nightly update is off. No internet at the boiler: turn on your phone's hotspot
+(a Wi-Fi the Pi knows), press the button, wait until the page says the download is done, turn the hotspot off.
+The new version is tested after the swap (it starts, shows data, reads the settings, the boiler connects again);
+if not, the Pi goes back to the old version by itself. For 14 days there is also a **Go back** button. Settings
+and history are kept. More in the guide, "Updating". Not tested on a real Pi yet.
+
 **Wi-Fi typo or a new router? No PC needed** (new, not tested on a real Pi). When the Pi has no network for
 3 minutes, it opens the Wi-Fi **`pelletpi-setup`** (no password). Join it with your phone, open
 **http://10.42.0.1:8099**, pick your Wi-Fi and type its password. The hotspot turns off when the Pi is on your
