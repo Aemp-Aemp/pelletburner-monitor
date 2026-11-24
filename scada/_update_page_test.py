@@ -115,6 +115,9 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
             check(f"[{lang}] home, {name}: the card says it", WANT[lang][name] in txt, txt)
             btns = pg.evaluate("()=>[...document.querySelectorAll('#updCard button[data-upd]')].map(b=>b.dataset.upd+':'+b.textContent)")
             busy = name in ("new-version-downloading", "installing")
+            sw = [x for x in btns if x.startswith("auto-")]
+            check(f"[{lang}] home, {name}: the auto-update switch shows when idle {sw}", (sw == []) if busy else len(sw) == 1)
+            btns = [x for x in btns if not x.startswith("auto-")]
             check(f"[{lang}] home, {name}: buttons fit the state {btns}", (btns == []) if busy else
                   (btns[0].startswith("check:") and (len(btns) == 2) == (name in ("now-on-new-version", "went-back"))))
             if name in ("now-on-new-version", "went-back"):

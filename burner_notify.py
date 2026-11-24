@@ -93,8 +93,8 @@ TEXTS = {
         "da": ("Monitor: svag Wi-Fi", "Monitorens Wi-Fi-signal har været svagt i {min} minutter. Flyt routeren "
                                       "eller Pi'en tættere på, eller brug et kabel.")}),
     "net_down": ("default", "globe_with_meridians", {        # sent when it is back: no message gets out without it
-        "en": ("Monitor: internet was down", "The monitor had no internet for {min} minutes. It works again."),
-        "da": ("Monitor: internettet var væk", "Monitoren havde intet internet i {min} minutter. Det virker igen.")}),
+        "en": ("Monitor: internet was down", "The monitor had no internet for {min} minutes. It works again.{wifi}"),
+        "da": ("Monitor: internettet var væk", "Monitoren havde intet internet i {min} minutter. Det virker igen.{wifi}")}),
     "burner_start": ("low", "fire", {
         "en": ("Burner started", "The burner started.{who}"),
         "da": ("Brænderen startede", "Brænderen startede.{who}")}),
@@ -116,6 +116,8 @@ TEXTS = {
         "da": ("Test fra brænder-monitoren", "Beskederne virker. Du får en besked som denne, når der sker noget "
                                                  "ved kedlen.")}),
 }
+WIFI_TEXT = {"en": " Wi-Fi was lost at {lost_at} and came back at {back_at}.",
+             "da": " Wi-Fi'en forsvandt kl. {lost_at} og kom igen kl. {back_at}."}
 # which on/off switch (settings ntfy.events) a message belongs to
 SWITCH = {"ash_bin": "ash", "ash_clean": "ash", "ash_plate": "ash", "pi_disk": "pi", "pi_volt": "pi", "pi_hot": "pi",
           "net_weak": "net", "net_down": "net"}
@@ -154,7 +156,7 @@ def message(key, lang="en", **p):
     title, body = tx.get(lang) or tx["en"]
     for k, v in p.items():
         title, body = title.replace("{" + k + "}", str(v)), body.replace("{" + k + "}", str(v))
-    return title, body.replace("{who}", ""), prio, tags
+    return title, body.replace("{who}", "").replace("{wifi}", ""), prio, tags
 
 
 # ============================================================================ certificates
@@ -654,7 +656,15 @@ class Notifier:
             self._set(net_down_since=now - (down - 1) * 60)      # the first bad line (each line = 1 min)
         elif not down and since:
             self._set(net_down_since=None)
-            self.notify("net_down", now=now, min=max(NET_TELL_MIN, round((now - since) / 60)))
+            wifi = ""
+            try:                                          # the Pi's Wi-Fi watchdog saw the Wi-Fi go and come back
+                import burner_ext as X
+                w = X.wifi_outage(os.path.dirname(self.state_path) if self.state_path else None, since - 600)
+                if w:
+                    wifi = WIFI_TEXT.get(self.lang(), WIFI_TEXT["en"]).format(**w)
+            except Exception:
+                wifi = ""
+            self.notify("net_down", now=now, min=max(NET_TELL_MIN, round((now - since) / 60)), wifi=wifi)
 
     def _check_ash(self, now):
         opt = getattr(self.mod, "optimiser", None)

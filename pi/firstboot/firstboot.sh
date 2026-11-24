@@ -16,7 +16,7 @@ STATE=/var/lib/pelletpi
 WWW=$STATE/www
 STATUS_TXT=$CARD/pelletpi-status.txt
 LOG=$CARD/pelletpi-install.log
-STEPS=8
+STEPS=9
 APT=(apt-get -y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 export DEBIAN_FRONTEND=noninteractive
 
@@ -239,6 +239,10 @@ pi_logging() {
   PI_USER=${OWNER:-root} sh "$APP/pi/install-pi-logging.sh"
 }
 
+wifi_watchdog() {
+  sh "$APP/pi/install-wifi-watchdog.sh"
+}
+
 auto_update() {
   local url
   url=$(setting REPO_URL)
@@ -261,8 +265,9 @@ step program 4 "Getting the program" get_program
 step usbnet  1 "USB-C network cable" usb_network
 step start   5 "Building and starting the program (about 5 minutes)" start_program
 step logging 6 "Pi health logging" pi_logging
-step update  7 "Nightly safe auto-update" auto_update
-step port80  8 "Page on http://$HOST.local" port_80
+step wifiwd  7 "Wi-Fi watchdog" wifi_watchdog
+step update  8 "Nightly safe auto-update" auto_update
+step port80  9 "Page on http://$HOST.local" port_80
 
 # ---------------------------------------------------------------- done
 touch "$STATE/installed"

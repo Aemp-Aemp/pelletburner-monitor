@@ -834,7 +834,17 @@ def start_http(mod, port, log, host="127.0.0.1", allowed_hosts=()):
                                 "keys": sorted(body.keys()) if isinstance(body, dict) else []})
                 return self._json(self._code(ok, msg), dict({"ok": ok, "msg": msg, "settings": mod.settings.public()},
                                                             **self._disk(msg)))
-            if path in ("/api/update/check", "/api/update/retry", "/api/update/back"):
+            if path in ("/api/update/auto-on", "/api/update/auto-off"):
+                # the "Automatic updates at night" switch: one fixed word, read by the Pi's updater on its next run
+                import burner_ext
+                if REPLAY is not None:
+                    return self._json(403, {"ok": False, "msg": "replay - no updates here"})
+                d = getattr(mod.store, "dir", None)
+                if not d:
+                    return self._json(400, {"ok": False, "msg": "no data folder"})
+                ok, msg = burner_ext.update_auto(d, path.endswith("-on"))
+                return self._json(200 if ok else 507, {"ok": ok, "msg": msg})
+            if path in ("/api/update/check", "/api/update/install", "/api/update/retry", "/api/update/back"):
                 # "Check for update" / "Try again" / "Go back": leave a one-word request file; the Pi's updater
                 # (systemd path unit) does the rest and only swaps versions while the burner is off or waiting.
                 # The word comes from the route, never from the body: no address, version or command can be sent.

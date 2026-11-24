@@ -143,6 +143,49 @@ i_join = [i for i, c in enumerate(calls) if "connect" in c][0]
 check(i_down < i_join, "round: hotspot off before joining (one radio)")
 w.serve = orig_serve
 
+# ---------------------------------------------------------------- main loop timing (fake clock)
+# at start: hotspot after 3 min offline; after a lost network: 10 min (the watchdog goes first), then 5 min rounds
+clock = [1000.0]
+w.time.time = lambda: clock[0]
+w.time.sleep = lambda s: clock.__setitem__(0, clock[0] + s)
+w.signal.signal = lambda *a: None
+rounds_at = []
+orig_round = w.setup_round
+
+
+def fake_round(dev, error="", idle_max=None):
+    rounds_at.append((clock[0], idle_max))
+    clock[0] += idle_max
+    return "idle"
+
+
+w.setup_round = fake_round
+answers["device status"] = (0, "wlan0:wifi:disconnected:--\n")
+w.main(rounds=2)
+check(180 <= rounds_at[0][0] - 1000 <= 210 and rounds_at[0][1] == w.IDLE_MAX,
+      f"main: never online -> hotspot after 3 min, 15 min rounds {rounds_at}")
+gap = rounds_at[1][0] - rounds_at[0][0] - w.IDLE_MAX
+check(w.RETRY <= gap <= w.RETRY + 30, f"main: 10 min off between rounds ({gap})")
+rounds_at.clear()
+seq = ["wlan0:wifi:connected:home\n"] * 3
+
+
+def status_seq(args, timeout=90):
+    if "device status" in " ".join(args):
+        return 0, (seq.pop(0) if seq else "wlan0:wifi:disconnected:--\n")
+    return 0, ""
+
+
+w.run = status_seq
+clock[0] = 1000.0
+w.main(rounds=2)
+lost_at = 1000 + 3 * 30
+check(w.LOST_FOR <= rounds_at[0][0] - lost_at <= w.LOST_FOR + 30 and rounds_at[0][1] == w.LOST_IDLE,
+      f"main: lost network -> hotspot after 10 min, 5 min rounds {rounds_at}")
+gap = rounds_at[1][0] - rounds_at[0][0] - w.LOST_IDLE
+check(w.LOST_RETRY <= gap <= w.LOST_RETRY + 30, f"main: 5 min off between rounds after a loss ({gap})")
+w.setup_round, w.run = orig_round, fake_run
+
 if FAILS:
     print("FAILED:")
     for f in FAILS:

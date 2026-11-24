@@ -117,8 +117,42 @@ installed). When the Pi has no cable and no Wi-Fi for 3 minutes, it scans once a
 `pelletpi-setup`. Join it with a phone and open `http://10.42.0.1:8099` (English/Danish): pick your Wi-Fi,
 type the password, Save. The hotspot goes off, the Pi joins (connection `pelletpi-home-wifi`); if that fails,
 the hotspot comes back with "Wrong password?". With no visitor for 15 minutes it goes off and the Pi tries its
-known networks; it comes back every ~13 minutes while still offline. Never while a network works. The boiler
+known networks; it comes back every 10 minutes while still offline. After a network was lost (the Pi was online
+before) it waits 10 minutes instead of 3, so the watchdog goes first, and then uses 5-minute rounds (5 on without
+a visitor, 5 off for the known networks). Never while a network works. The boiler
 link is USB, so the monitor keeps logging. Off: `sudo systemctl disable --now pelletpi-wifi-setup`.
+
+### Wi-Fi watchdog
+
+> **New, not tested on a real Pi.** The decisions are tested with a fake `nmcli` (`scada/_wifi_watchdog_test.py`).
+
+Why: on one Pi 4 the Wi-Fi chip had a scan error (`brcmf_cfg80211_scan: scan error (-52)`), a few joins to a weak
+phone hotspot failed, and NetworkManager then marked the connection failed (`no-secrets`) and never tried again.
+
+`install-wifi-watchdog.sh` (run by `pi/install.sh`, the easy install and every `install-auto-update.sh` run, so an
+existing Pi gets it with its next update; by hand: `sudo sh pi/install-wifi-watchdog.sh`):
+
+- writes `/etc/NetworkManager/conf.d/pelletpi-wifi.conf` (`wifi.powersave = 2`; `install-wifi-setup.sh` too) and
+  sets `connection.autoconnect-retries 0` and `802-11-wireless.powersave 2` on every Wi-Fi client connection
+  (found by type, access points skipped, changed only when not set yet). The setup page does the same for the
+  network it saves, and the watchdog checks again after every start and every hour;
+- installs the setup hotspot when it is missing, and `pelletpi-wifi-watchdog.timer` (every minute, as root):
+
+| Without network for | The watchdog |
+|---|---|
+| 0-2 min | nothing |
+| 3 min | logs "lost", `nmcli connection up` the known Wi-Fi (by UUID; also clears the "failed" mark) |
+| 5 min | radio off/on, then connection up |
+| 7 min | reloads `brcmfmac` once (earlier when the kernel log has 2 scan errors in 10 min or wlan0 is gone; at most every 30 min, 4 times per start) |
+| 10 min | the setup hotspot service opens `pelletpi-setup` (the watchdog starts the service if it is enabled but not running) |
+| later | connection up every 3 min and the radio every 20 min while the hotspot is off; nothing while it is on |
+| back | logs "back" with the lost and back times |
+
+Never touches the boiler's USB adapter or the container. Events: `data/wifi-watchdog.jsonl` (no network names);
+the phone alert "internet was down" adds "Wi-Fi was lost at hh:mm and came back at hh:mm". Look without changing
+anything: `sudo python3 /usr/local/lib/pelletpi/pelletpi_wifi_watchdog.py --dry-run`. Off: `WIFI_WATCHDOG=no` in
+`pelletpi/settings.txt` on the boot drive (or `/etc/default/pelletpi-wifi-watchdog`). Check power save:
+`sudo /sbin/iw dev wlan0 get power_save`.
 
 ### What is untested
 
@@ -129,6 +163,7 @@ link is USB, so the monitor keeps logging. Off: `sudo systemctl disable --now pe
 - The update (nightly and from the page), the test after the swap, the roll-back, Go back and the updater
   replacing itself, on a real Pi with Docker and systemd.
 - The Wi-Fi setup hotspot (scan, hotspot, joining, fallback) on a real Pi 4.
+- The Wi-Fi watchdog (reconnect, radio, driver reload, the two connection settings) on a real Pi 4.
 
 ## 1. Write the card
 

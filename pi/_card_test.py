@@ -86,6 +86,16 @@ for need in ('HOTSPOT = "pelletpi-setup"', "OFFLINE_FOR = 180", "IDLE_MAX = 900"
 check("wifi-sec" not in ws.split("def hotspot_up")[1].split("def hotspot_down")[0],
       "pelletpi_wifi_setup.py: the setup hotspot is open (owner decision 22 Nov)")
 check("tty" not in ws and "serial" not in ws.lower(), "pelletpi_wifi_setup.py: must not touch the boiler's USB link")
+# Wi-Fi watchdog (new, not tested on a Pi): installed by every path, never near the boiler link or the container
+check("install-wifi-watchdog.sh" in one and "NO_WIFI_WATCHDOG" in one, "pi/install.sh: Wi-Fi watchdog step missing")
+check("step wifiwd" in fb and "install-wifi-watchdog.sh" in fb, "firstboot.sh: Wi-Fi watchdog step missing")
+check("install-wifi-watchdog.sh" in rd("pi/install-auto-update.sh").decode(),
+      "install-auto-update.sh: an updated Pi must get the Wi-Fi watchdog")
+wd = rd("pi/pelletpi_wifi_watchdog.py").decode()
+check("tty" not in wd and "serial" not in wd.lower() and "docker" not in wd,
+      "pelletpi_wifi_watchdog.py: must not touch the boiler's USB link or the monitor's container")
+check("WIFI_WATCHDOG" in wd and "wifi.powersave = 2" in rd("pi/install-wifi-setup.sh").decode(),
+      "Wi-Fi watchdog off switch or power save drop-in missing")
 for doc in ("README.md", "docs/guide.html", "pi/README.md"):
     d = rd(doc).decode()
     check("pelletpi-setup" in d and "10.42.0.1:8099" in d and "not tested on a real Pi" in d,

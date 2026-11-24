@@ -775,6 +775,7 @@ document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="lhDet") LH_O
 // it is (api/update "view", made by burner_ext.update_info); here are the words and the buttons for both pages.
 const UPD_TXT={
  en:{title:"Software update", ver:"Version {current}", open:"Update…",
+  auto_on:"Automatic updates at night: on", auto_off:"Automatic updates at night: off", btn_auto_off:"Turn off", btn_auto_on:"Turn on",
   btn_check:"Check for update", btn_install:"Install {latest}", btn_retry:"Try {latest} again", btn_back:"Go back to {prev}",
   note:"A new version is installed when the boiler is off or waiting. If it does not work here, the Pi goes back to the old version by itself. Settings and history are kept.",
   back_confirm:"Go back to {prev}? Settings and history are kept.", send_fail:"Could not ask the Pi. Try again.",
@@ -810,6 +811,7 @@ const UPD_TXT={
   tidy_wait:"An update was interrupted. The old version’s files are back; it starts again when the boiler is off or waiting.",
   error:"The update stopped with an error. Still on {current}."},
  da:{title:"Opdatering af programmet", ver:"Version {current}", open:"Opdatering…",
+  auto_on:"Automatiske opdateringer om natten: til", auto_off:"Automatiske opdateringer om natten: fra", btn_auto_off:"Slå fra", btn_auto_on:"Slå til",
   btn_check:"Søg efter opdatering", btn_install:"Installér {latest}", btn_retry:"Prøv {latest} igen", btn_back:"Gå tilbage til {prev}",
   note:"En ny version installeres, når kedlen er slukket eller venter. Virker den ikke her, går Pi’en selv tilbage til den gamle version. Indstillinger og historik bevares.",
   back_confirm:"Gå tilbage til {prev}? Indstillinger og historik bevares.", send_fail:"Kunne ikke spørge Pi’en. Prøv igen.",
@@ -855,9 +857,12 @@ function updCardHTML(cls){ const v=UPD&&UPD.view; if(!v) return "";
   let h=`<div style="font-weight:700">${esc(updT("title"))}</div><div style="margin-top:4px;opacity:.75">${esc(updT("ver",v))}</div>`+
     `<div id="updState" data-key="${esc(v.key)}" aria-live="polite" style="margin-top:10px;font-weight:600">${v.busy?"⏳ ":""}${esc(updStateText())}</div>`+
     `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px">`;
-  if(v.btn) h+=b(v.btn==="retry"?"retry":"check",updT("btn_"+v.btn,v),cls[0]);
+  if(v.btn) h+=b(v.btn==="retry"?"retry":v.btn==="install"?"install":"check",updT("btn_"+v.btn,v),cls[0]);
   if(v.back) h+=b("back",updT("btn_back",{prev:v.back}),cls[1]);
-  return h+`</div><div style="margin-top:12px;font-size:13px;opacity:.75">${esc(updT("note"))}</div>`; }
+  h+=`</div>`;
+  if(!v.busy) h+=`<div style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">`+
+    `<span>${esc(updT(v.auto?"auto_on":"auto_off"))}</span>`+b(v.auto?"auto-off":"auto-on",updT(v.auto?"btn_auto_off":"btn_auto_on"),cls[1])+`</div>`;
+  return h+`<div style="margin-top:12px;font-size:13px;opacity:.75">${esc(updT("note"))}</div>`; }
 // Reads the state and draws it (the page's updDraw). While the updater works it asks again every 3 s; the monitor
 // restarts in the middle of an update, so a failed read keeps the last state and tries again.
 async function updLoad(){ clearTimeout(UPD_TIMER);

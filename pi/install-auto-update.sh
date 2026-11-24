@@ -6,6 +6,7 @@
 #   off or waiting; the "Check for update" button on the page does the same at once, and "Go back" returns
 #   to the version from before the last update
 # - a normal update runs this file again by itself, so the updater on the Pi follows the program
+# - it also installs or refreshes the Wi-Fi watchdog (install-wifi-watchdog.sh), so a Pi gets it with an update
 # - turn it off: AUTO_UPDATE=no in pelletpi/settings.txt on the card's boot drive, or in
 #   /etc/default/pelletpi-update
 set -e
@@ -84,4 +85,8 @@ systemctl daemon-reload
 systemctl enable pelletpi-update.timer pelletpi-update-check.path
 # restarted, so that changed units take effect now (a running update is not stopped by this)
 systemctl restart pelletpi-update.timer pelletpi-update-check.path
+# the Wi-Fi watchdog follows the program too (NO_WIFI_WATCHDOG=1 leaves it out); a failure here never stops the update
+if [ -z "$NO_WIFI_WATCHDOG" ] && [ -f "$HERE/install-wifi-watchdog.sh" ]; then
+  sh "$HERE/install-wifi-watchdog.sh" || echo "Wi-Fi watchdog not installed"
+fi
 echo "Auto-update installed for $APP (source: ${REPO_URL:-none}, auto: $AUTO)."

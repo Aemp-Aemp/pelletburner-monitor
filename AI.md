@@ -65,6 +65,19 @@ When the Pi has no network for 3 minutes, it opens an open Wi-Fi called **`pelle
 phone, open **http://10.42.0.1:8099**, pick the home Wi-Fi and type its password. The hotspot goes off when the
 Pi is on the Wi-Fi, or after 15 minutes. A network cable to the router also works. (New, not tested on a real Pi.)
 
+### The Pi lost a Wi-Fi it had (Wi-Fi watchdog)
+
+Seen once: the Pi's Wi-Fi chip had a scan error (`brcmf_cfg80211_scan: scan error (-52)`), a few joins to a weak
+phone hotspot failed, then NetworkManager marked the connection failed (`no-secrets`) and never tried again.
+Now (new, not tested on a real Pi): the known Wi-Fi connections get `connection.autoconnect-retries 0` (try
+forever) and `802-11-wireless.powersave 2` (power save off), plus `/etc/NetworkManager/conf.d/pelletpi-wifi.conf`;
+a watchdog (`pelletpi-wifi-watchdog.timer`, every minute) joins the known Wi-Fi again after 3 min, turns the radio
+off/on after 5 min, reloads the `brcmfmac` driver when scans keep failing, and lets `pelletpi-setup` open after
+10 min. Events: `data/wifi-watchdog.jsonl`. Off: `WIFI_WATCHDOG=no` in `pelletpi/settings.txt`. An existing Pi gets
+it with the next update, or `sudo sh pi/install-wifi-watchdog.sh`. Still lost: USB-C cable, `ssh pi@10.55.0.1`,
+`journalctl -u NetworkManager -b`, `dmesg | grep brcmf`; check with `sudo /sbin/iw dev wlan0 get power_save`
+(iw is in /sbin). Restart the Pi only when the boiler is off or waiting.
+
 ### Manual way (tested)
 
 1. Write the card with Imager as above (host name `pelletpi`, user, Wi-Fi, time zone, and SSH on).
@@ -139,7 +152,7 @@ Run these on the Pi, in `~/pelletburner-monitor`:
 |---|---|
 | No data on the page | IO BOKS on? Cable in J4? Swap A and B. Only one USB-serial adapter, or set `BURNER_SERIAL` in `.env` (`ls /dev/serial/by-id/`). |
 | Can't find the Pi | Same Wi-Fi as the phone? Try `:8787`, or the Pi's address from the router's device list instead of `pelletpi.local`. |
-| Wi-Fi lost | Wait 3 minutes, join `pelletpi-setup`, open http://10.42.0.1:8099. Or use a network cable. |
+| Wi-Fi lost | The watchdog reconnects; after 10 minutes join `pelletpi-setup`, open http://10.42.0.1:8099. Or the USB-C cable (10.55.0.1) or a network cable. Events: `data/wifi-watchdog.jsonl`. |
 | Page shows old data | Check `"connected"` in `/status.json` and `docker compose ps`. Reload the page. |
 | Wrong numbers | Check Settings -> My boiler (size, min power %, fan rpm) matches the boiler, and the pellet store size (Settings -> Pellets & ash). Pellets at home drift: type the counted kg on the page again. |
 | Plan times off | The Pi's clock (see power cuts); `clock_synced` in `pi-health-*`. |

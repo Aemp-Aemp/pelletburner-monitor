@@ -17,7 +17,7 @@ from burner_common import (STATE_LABELS, STATE_WORDS, ALARM_TEXT, SOURCES, iso a
                            rows_of, read_json, write_json_atomic, parse_jsonl_line, open_append,
                            write_failed, write_ok, append_jsonl)
 
-MONITOR_VERSION = "1.0.2"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
+MONITOR_VERSION = "1.0.3"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
 
 # ============================================================================ who started / stopped it
 # SOURCES (burner_common) is the one table of "source" names: the `source` field on a start / stop event
@@ -805,12 +805,29 @@ def _bin_tpl(key):
 
 
 # ---- software update (Raspberry Pi): the page only leaves a one-word request; pi/pelletpi-update.sh does the work
-UPDATE_REQUESTS = ("check", "retry", "back")
+UPDATE_REQUESTS = ("check", "install", "retry", "back")
 UPDATE_PHASES = ("check", "download", "waiting", "install", "back")
 UPDATE_CODES = ("uptodate", "offline", "no_release", "no_repo", "updated", "rolled_back", "build_failed", "disk_full",
                 "busy", "later", "available", "bad_skipped", "left_skipped", "went_back", "no_previous", "back_busy", "back_failed",
                 "error", "local_changes", "unknown_base", "tidy_wait")
 UPDATE_WHY = ("no_answer", "status", "settings", "boiler", "swap")
+
+
+def update_auto(data_dir, on):
+    """The page's "Automatic updates at night" switch: <data dir>/update-auto = "on" / "off". The Pi's updater reads it
+    on its next run (AUTO_UPDATE=no on the SD card stays off). Returns (ok, msg)."""
+    if not data_dir:
+        return False, "no data folder"
+    path = os.path.join(data_dir, "update-auto")
+    try:
+        if os.path.islink(path):
+            os.remove(path)
+        with open(path + ".tmp", "w", encoding="ascii") as fh:
+            fh.write(("on" if on else "off") + "\n")
+        os.replace(path + ".tmp", path)
+    except OSError:
+        return False, "could not save"
+    return True, "saved"
 
 
 def update_request(data_dir, what):
@@ -884,10 +901,20 @@ def update_info(data_dir, now=None):
     left = _upd_ver(d.get("from")) if key == "went_back" else None    # "Go back" was pressed: offer the version that was left
     btn = None if busy else "install" if key in ("available", "later", "unknown_base") else \
         "retry" if key in ("bad_skipped", "left_skipped") or left else "check"
-    out = {"current": cur, "latest": latest, "available": bool(d.get("available")), "auto": bool(d.get("auto")),
+    auto = bool(d.get("auto"))
+    try:                                    # a switch newer than the updater's last word: show the choice
+        ap = os.path.join(data_dir, "update-auto")
+        if not os.path.islink(ap) and os.path.getmtime(ap) >= os.path.getmtime(path):
+            with open(ap, encoding="ascii", errors="ignore") as fh:
+                w = fh.read(4).strip()
+            if w in ("on", "off"):
+                auto = w == "on"
+    except OSError:
+        pass
+    out = {"current": cur, "latest": latest, "available": bool(d.get("available")), "auto": auto,
            "checked": d.get("checked") if isinstance(d.get("checked"), (int, float)) else None,
            "result": str(d.get("result") or "")[:200],
-           "view": {"key": key, "busy": busy, "btn": btn, "back": None if busy or old else prev_v, "why": why,
+           "view": {"key": key, "busy": busy, "btn": btn, "auto": auto, "back": None if busy or old else prev_v, "why": why,
                     "current": cur, "latest": left or latest, "to": _upd_ver(d.get("to")) or latest,
                     "from": _upd_ver(d.get("from"))}}
     return out
@@ -963,6 +990,26 @@ def net_trouble(data_dir, now=None, cache_s=60):
             out[key] = int((recs[-1]["epoch"] - first) // 60) + 1 if first is not None else 0
     _NET_CACHE[data_dir] = (now, out)
     return out
+
+
+def wifi_outage(data_dir, since):
+    """The Wi-Fi watchdog's newest "back" event (<data dir>/wifi-watchdog.jsonl, pi/pelletpi_wifi_watchdog.py)
+    for an outage that ended after `since` (epoch): {"lost_at": "hh:mm", "back_at": "hh:mm"} (the Pi's own clock),
+    or None."""
+    if not data_dir:
+        return None
+    try:
+        with open(os.path.join(data_dir, "wifi-watchdog.jsonl"), "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 16384))
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        r = parse_jsonl_line(line)
+        if isinstance(r, dict) and r.get("ev") == "back" and (_num(r.get("epoch")) or 0) >= since                 and r.get("lost_at") and r.get("back_at"):
+            return {"lost_at": str(r["lost_at"])[:5], "back_at": str(r["back_at"])[:5]}
+    return None
 
 
 class MqttBridge:

@@ -13,6 +13,13 @@ fi
 mkdir -p /usr/local/lib/pelletpi
 sed 's/\r$//' "$HERE/pelletpi_wifi_setup.py" > /usr/local/lib/pelletpi/pelletpi_wifi_setup.py
 
+# Wi-Fi power save off for every Wi-Fi connection, also new ones (a known cause of drops on the Pi's Wi-Fi chip).
+# install-wifi-watchdog.sh writes the same file and also fixes the connections that exist already.
+mkdir -p /etc/NetworkManager/conf.d
+printf '# Pellet burner monitor: Wi-Fi power save off (2 = disable).\n[connection]\nwifi.powersave = 2\n' \
+  > /etc/NetworkManager/conf.d/pelletpi-wifi.conf
+nmcli general reload conf >/dev/null 2>&1 || true
+
 cat > /etc/systemd/system/pelletpi-wifi-setup.service <<'EOF'
 [Unit]
 Description=Pellet burner monitor: Wi-Fi setup hotspot while the Pi has no network

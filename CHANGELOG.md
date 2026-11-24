@@ -4,6 +4,16 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.3
+
+### New
+- Wi-Fi watchdog on the Pi: if the Wi-Fi is gone for 3 minutes it reconnects by itself, restarts the Wi-Fi if needed, and opens the setup Wi-Fi after about 10 minutes. The Pi never gives up on a known Wi-Fi and Wi-Fi power saving is off.
+- Switch in the update card: Automatic updates at night on/off.
+
+### Better
+- Check for update only looks; Install X installs. Nothing is installed until you press Install.
+- The phone alert about lost internet says when the Wi-Fi was lost and came back.
+
 ## 1.0.2
 
 ### Fixed

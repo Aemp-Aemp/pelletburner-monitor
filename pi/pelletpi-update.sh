@@ -2,7 +2,7 @@
 # Pellet burner monitor - safe update (runs on the Pi, as root). Installed by pi/install-auto-update.sh.
 #
 #   pelletpi-update auto    nightly timer: check, and install when auto-update is on
-#   pelletpi-update check   the page's button: check and install now (also when auto-update is off).
+#   pelletpi-update check   the page's buttons: "check" only looks, "install" installs now (also when auto-update is off).
 #                           The page leaves one word in data/update-request: check, retry or back.
 #   pelletpi-update now     the same as check, by hand
 #   pelletpi-update retry   install the newest release also when it failed here before
@@ -58,10 +58,16 @@ REPO_URL=""
 AUTO_UPDATE=yes
 # shellcheck disable=SC1090
 if [ -f "$CONF" ]; then . "$CONF"; fi
+CARD_AUTO=""
 if [ -f "$CARD_SETTINGS" ]; then
   v=$(sed -n 's/^AUTO_UPDATE=//p' "$CARD_SETTINGS" | tr -d '\r' | tail -n 1)
-  if [ -n "$v" ]; then AUTO_UPDATE=$v; fi
+  if [ -n "$v" ]; then AUTO_UPDATE=$v; CARD_AUTO=$v; fi
 fi
+# the page's switch (data/update-auto: "on" / "off") wins over the files above; AUTO_UPDATE=no on the card stays off
+if [ -n "$APP" ] && [ -f "$APP/data/update-auto" ] && [ ! -L "$APP/data/update-auto" ]; then
+  case "$(head -c 3 "$APP/data/update-auto" 2>/dev/null | tr -cd 'a-z')" in on) AUTO_UPDATE=yes ;; off) AUTO_UPDATE=no ;; esac
+fi
+if [ "$CARD_AUTO" = no ]; then AUTO_UPDATE=no; fi
 case "$MODE" in
   auto | check | now | retry | back) ;;
   *) echo "usage: pelletpi-update auto|check|now|retry|back"; exit 2 ;;
@@ -84,9 +90,10 @@ exec 9>"$STATE/update.lock"
 if [ "$MODE" = check ]; then
   # the page's request: wait for a run that is at work (the timer's), then handle it here, inside the lock
   flock -w 86400 9 || { rm -f "$REQ"; echo "another update is running"; exit 0; }
-  # The page can only leave one of three words. Anything else counts as "check".
+  # The page can only leave one of four words. Anything else counts as "check".
   ask=$(head -c 16 "$REQ" 2>/dev/null | tr -cd 'a-z' || true)
-  case "$ask" in back) MODE=back ;; retry) MODE=retry ;; *) MODE=now ;; esac
+  # "check" only looks (the page then offers "Install X"); "install" installs.
+  case "$ask" in back) MODE=back ;; retry) MODE=retry ;; install) MODE=now ;; *) MODE=look ;; esac
   rm -f "$REQ"
 else
   flock -n 9 || { echo "another update is running"; exit 0; }   # a page request is left for the path unit
@@ -632,6 +639,7 @@ fails=${fails:-0}
 if [ "$fails" -ge "$BUILD_TRIES" ]; then
   finish bad_skipped "update $LATEST available, but its build failed $fails times here; skipped until Try again"
 fi
+if [ "$MODE" = look ]; then finish available "update $LATEST available; press Install on the page"; fi
 if [ "$MODE" = auto ] && [ "$AUTO_UPDATE" != yes ]; then finish available "update $LATEST available (auto-update is off)"; fi
 if [ "$MODE" = auto ] && ! safe_now; then
   finish later "update $LATEST available; waits until the burner is off or waiting (now: $(burner_word))"

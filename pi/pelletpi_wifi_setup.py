@@ -2,6 +2,9 @@
 """Wi-Fi setup hotspot for the Pi (new, not tested on a real Pi yet).
 
 When the Pi has had no network (no cable, no Wi-Fi) for 3 minutes, it opens an open Wi-Fi "pelletpi-setup".
+After a network was lost (the Pi was online before), it waits 10 minutes instead, so the Wi-Fi watchdog
+(pelletpi_wifi_watchdog.py) can reconnect first, and then uses shorter rounds (5 minutes on without a visitor,
+5 minutes off to try the known networks).
 Join it with a phone and open http://10.42.0.1:8099: pick your home Wi-Fi, type its password, Save.
 The hotspot turns off after a successful join, or after 15 minutes without a visitor (then the Pi tries its
 known networks and comes back every 10 minutes while still offline). Never while a network works.
@@ -20,6 +23,9 @@ PORT = 8099
 OFFLINE_FOR = 180   # s without network before the hotspot opens
 IDLE_MAX = 900      # s without a visitor before the hotspot turns off
 RETRY = 600         # s before the hotspot opens again while still offline
+LOST_FOR = 600      # after a lost network: s without network before the hotspot opens (watchdog goes first)
+LOST_IDLE = 300     # after a lost network: s without a visitor before the hotspot turns off
+LOST_RETRY = 300    # after a lost network: s off (the Pi tries its known networks) before it opens again
 JOIN_WAIT = 60      # s to join the chosen Wi-Fi
 
 
@@ -110,6 +116,12 @@ def hotspot_down():
     run(["nmcli", "connection", "delete", HOTSPOT])
 
 
+def harden(con):
+    """NetworkManager tries this connection forever (it can give up for good after a few failed joins) and Wi-Fi
+    power save is off (a known cause of drops on the Pi's Wi-Fi chip). From the next connect; nothing drops now."""
+    run(["nmcli", "connection", "modify", con, "connection.autoconnect-retries", "0", "802-11-wireless.powersave", "2"])
+
+
 def join(dev, name, pw, hidden):
     """Join the chosen Wi-Fi as connection HOME_CON (replaces the one made here before). True when it works."""
     run(["nmcli", "connection", "delete", HOME_CON])
@@ -123,6 +135,7 @@ def join(dev, name, pw, hidden):
         args += ["hidden", "yes"]
     code, _ = run(args, timeout=JOIN_WAIT + 30)
     if code == 0 and online(devices()):
+        harden(HOME_CON)
         return True
     run(["nmcli", "connection", "delete", HOME_CON])
     return False
@@ -234,8 +247,9 @@ def serve(state, port=None, host=None):
 
 
 # ---------------------------------------------------------------- main loop
-def setup_round(dev, error=""):
+def setup_round(dev, error="", idle_max=None):
     """One hotspot round. Returns 'joined', 'online' (cable), 'wrong:<name>' (join failed) or 'idle' (nobody came)."""
+    idle_max = IDLE_MAX if idle_max is None else idle_max
     state = State(scan(dev))
     state.error = error
     if not hotspot_up(dev):
@@ -257,7 +271,7 @@ def setup_round(dev, error=""):
         ticks = 0
         while not state.saved.wait(2):
             ticks += 1
-            if time.time() - state.last_visit > IDLE_MAX:
+            if time.time() - state.last_visit > idle_max:
                 log("nobody came: hotspot off")
                 return "idle"
             if ticks % 15 == 0 and online(devices()):   # a cable was plugged in
@@ -277,33 +291,41 @@ def setup_round(dev, error=""):
     return "wrong:" + name
 
 
-def main():
+def main(rounds=None):
+    """rounds: stop after this many hotspot rounds (tests); None = forever."""
     if run(["nmcli", "--version"])[0] != 0:
         log("no NetworkManager (nmcli): nothing to do")
         return 0
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # finally-blocks take the hotspot down
     offline_since = time.time()
+    was_online = False      # online since this service started: a later outage is a lost network
+    next_round = 0          # after a round nobody came to: not again before this time
     error = ""
     try:
-        while True:
+        while rounds is None or rounds > 0:
             devs = devices()
             if online(devs):
-                offline_since, error = None, ""
+                offline_since, error, next_round, was_online = None, "", 0, True
                 time.sleep(30)
                 continue
-            offline_since = offline_since or time.time()
+            now = time.time()
+            offline_since = offline_since or now
             dev = wifi_device(devs)
-            if not dev or time.time() - offline_since < OFFLINE_FOR:
+            wait = LOST_FOR if was_online else OFFLINE_FOR
+            if not dev or now - offline_since < wait or now < next_round:
                 time.sleep(30)
                 continue
-            res = setup_round(dev, error)
+            res = setup_round(dev, error, LOST_IDLE if was_online else IDLE_MAX)
+            if rounds is not None:
+                rounds -= 1
             if res.startswith("wrong:"):
                 error = res[6:]
                 continue
             error = ""
-            if res == "idle":
-                time.sleep(RETRY)        # NetworkManager tries the known networks meanwhile
-            offline_since = None
+            if res == "idle":            # NetworkManager and the watchdog try the known networks meanwhile
+                next_round = time.time() + (LOST_RETRY if was_online else RETRY)
+            else:
+                offline_since = None
     finally:
         hotspot_down()
 

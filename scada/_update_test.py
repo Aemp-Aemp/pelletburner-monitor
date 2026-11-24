@@ -145,14 +145,14 @@ with open(os.path.join(d2, "update.json"), "w") as f:
     json.dump(U(), f)
 s, j = get("api/update")
 check("GET /api/update: the file plus the view", s == 200 and j["current"] == "v1.0.0" and j["view"]["key"] == "uptodate")
-for what in ("check", "retry", "back"):
+for what in ("check", "install", "retry", "back"):
     check(f"{what}: refused without the X-Burner header", post("api/update/" + what, {}, hdr=False)[0] == 403 and not os.path.exists(rq))
     check(f"{what}: refused when not sent as JSON", post("api/update/" + what, {}, ctype="text/plain")[0] == 403 and not os.path.exists(rq))
     s, j = post("api/update/" + what, {"url": "https://example.invalid/x.git", "tag": "v9.9.9", "cmd": "reboot", "what": "back"})
     check(f"{what}: the request file holds that one word, nothing from the browser",
           s == 200 and j["ok"] and open(rq).read() == what + "\n")
     os.remove(rq)
-for bad in ("api/update/now", "api/update/install", "api/update/check/../back", "api/update/"):
+for bad in ("api/update/now", "api/update/upgrade", "api/update/check/../back", "api/update/"):
     s, j = post(bad, {})
     check(f"POST {bad}: no such request", s != 200 and not os.path.exists(rq))
 req = urllib.request.Request(base + "api/update/check", data=b"{}", method="POST",
@@ -163,8 +163,15 @@ try:
 except urllib.error.HTTPError as e:
     code = e.code
 check("a request under a foreign host name is refused", code == 403 and not os.path.exists(rq))
-check("update_request: only the three words", X.update_request(d2, "check; reboot") == (False, "unknown request")
+check("update_request: only the four words", X.update_request(d2, "check; reboot") == (False, "unknown request")
       and X.update_request(d2, "") == (False, "unknown request") and not os.path.exists(rq))
+s, j = post("api/update/auto-off", {})
+ap = os.path.join(d2, "update-auto")
+check("the switch: auto-off saves 'off' and leaves no request", s == 200 and open(ap).read() == "off\n" and not os.path.exists(rq))
+check("the switch shows at once on the page", get("api/update")[1]["view"].get("auto") is False)
+s, j = post("api/update/auto-on", {})
+check("the switch: auto-on saves 'on'", s == 200 and open(ap).read() == "on\n" and get("api/update")[1]["view"].get("auto") is True)
+os.remove(ap)
 post("api/update/check", {})
 os.utime(rq, (time.time(), time.time()))             # file times are real; the test clock may be moved (--clock)
 check("after a press the view says 'checking'", get("api/update")[1]["view"]["key"] == "asked")
@@ -571,7 +578,7 @@ def updater_tests():
     # --- nothing to install
     reset()
     a = Pi(rem, mon, "a")
-    j = a.run("check", ask="check")
+    j = a.run("check", ask="install")
     check("a pre-release (v1.1.0-rc1) is never installed: up to date", j.get("code") == "uptodate" and j.get("latest") == "v1.0.0"
           and "build" not in a.docker() and a.on("v1.0.0") and a.untouched(), (j, a.out))
     check("update.json is the new kind", j.get("v") == 2 and j.get("phase") == "idle" and j.get("current") == "v1.0.0")
@@ -594,13 +601,17 @@ def updater_tests():
     reset(state=5)
     j = a.run("auto")
     check("night, burner busy: not even built", j.get("code") == "later" and "build" not in a.docker() and a.on("v1.0.0"), (j, a.out))
-    j = a.run("check", ask="check", MIN_FREE_KB=2000000)
+    j = a.run("check", ask="install", MIN_FREE_KB=2000000)
     check("disk nearly full: stops before the download", j.get("code") == "disk_full" and "build" not in a.docker() and a.on("v1.0.0"))
 
     # --- the button: check + install, auto-update off, installed from the tarball (no .git)
     reset()
     b = Pi(rem, mon, "b", tarball=True, AUTO_UPDATE="no")
     j = b.run("check", ask="check")
+    check("'Check for update' only looks: v1.1.0 found, nothing installed", j.get("code") == "available"
+          and j.get("latest") == "v1.1.0" and "build" not in b.docker() and b.on("v1.0.0"), (j, b.out))
+    check("... and the page then offers Install v1.1.0", X.update_info(b.data, time.time())["view"]["btn"] == "install")
+    j = b.run("check", ask="install")
     dk = b.docker()
     check("button, auto-update off: v1.1.0 installed (not v1.2.0-rc1)", j.get("code") == "updated" and j.get("current") == "v1.1.0"
           and j.get("from") == "v1.0.0" and b.on("v1.1.0") and b.rc == 0, (j, b.out))
@@ -614,7 +625,7 @@ def updater_tests():
     check("the journal and the version file are synced to the card", dk.count("sync") >= 2)
     check("the log is kept in the updater's own folder; the page gets a copy",
           os.path.isfile(os.path.join(b.state, "update.log")) and "updated v1.0.0 -> v1.1.0" in open(os.path.join(b.data, "update.log")).read())
-    j = b.run("check", ask="check")
+    j = b.run("check", ask="install")
     check("pressed again: up to date", j.get("code") == "uptodate" and (j.get("previous") or {}).get("version") == "v1.0.0")
 
     # --- Go back
@@ -632,7 +643,7 @@ def updater_tests():
     check("Go back twice: there is no older version", j.get("code") == "no_previous" and b.on("v1.0.0"))
     j = b.run("auto", AUTO_UPDATE="yes")
     check("the version that was left is not installed again by itself (and says you went back)", j.get("code") == "left_skipped" and b.on("v1.0.0"))
-    j = b.run("check", ask="check")
+    j = b.run("check", ask="install")
     check("... nor by a plain press", j.get("code") == "left_skipped" and b.on("v1.0.0"))
     check("... and the page offers Try again", X.update_info(b.data, time.time())["view"]["btn"] == "retry")
     j = b.run("check", ask="retry")
@@ -642,12 +653,23 @@ def updater_tests():
     check("Go back to a version that does not start: stays on the new one", j.get("code") == "back_failed" and b.on("v1.1.0") and b.rc == 1
           and b.untouched(), (j, b.out))
 
-    # --- the request file can only choose between the three words
+    # --- the request file can only choose between the four words
     reset()
     c = Pi(rem, mon, "c")
     j = c.run("check", ask="back; touch pwned\n")
-    check("a request with more than the word counts as 'check' (never run)", j.get("code") == "updated" and c.on("v1.1.0")
-          and not os.path.exists(os.path.join(c.app, "pwned")) and not os.path.exists(os.path.join(c.data, "pwned")), (j, c.out))
+    check("a request with more than the word counts as 'check' (only looks, never run)", j.get("code") == "available"
+          and c.on("v1.0.0") and not os.path.exists(os.path.join(c.app, "pwned"))
+          and not os.path.exists(os.path.join(c.data, "pwned")), (j, c.out))
+    j = c.run("check", ask="install")
+    check("then Install installs it", j.get("code") == "updated" and c.on("v1.1.0"), (j, c.out))
+
+    # --- the page's switch "Automatic updates at night: off" (data/update-auto) wins over AUTO_UPDATE=yes
+    reset()
+    e = Pi(rem, mon, "e")
+    with open(os.path.join(e.data, "update-auto"), "w", newline="\n") as fh:
+        fh.write("off\n")
+    j = e.run("auto", AUTO_UPDATE="yes")
+    check("switch off: nothing installed at night", j.get("code") == "available" and j.get("auto") is False and e.on("v1.0.0"), (j, e.out))
 
     # --- roll-back: each reason
     for how, why, words in (("down", "no_answer", "does not answer"), ("status", "status", "answers with a broken status"),
@@ -656,7 +678,7 @@ def updater_tests():
             continue
         reset(behave={"img-v1.1.0": how})
         p = Pi(rem, mon, "rb_" + how)
-        j = p.run("check", ask="check")
+        j = p.run("check", ask="install")
         check(f"new version {words}: back to the old one", j.get("code") == "rolled_back" and j.get("why") == why and j.get("to") == "v1.1.0"
               and j.get("current") == "v1.0.0" and p.on("v1.0.0") and p.rc == 1 and p.untouched() and p.has("bad-v1.1.0")
               and j.get("previous") is None, (j, p.out))
@@ -664,17 +686,17 @@ def updater_tests():
     check("a version that failed is not tried again at night", j.get("code") == "bad_skipped" and "build" not in p.docker())
     reset(connected=False, last_rx_age=None, up_age=30, jump=7200)
     q0 = Pi(rem, mon, "quiet0")
-    j = q0.run("check", ask="check")
+    j = q0.run("check", ask="install")
     check("no traffic, the monitor started a moment ago (its wall clock jumped 2 h at NTP sync): not 'quiet', not swapped",
           j.get("code") == "busy" and q0.on("v1.0.0") and q0.untouched(), (j, q0.out))
     if FULL:
         reset(behave={"img-v1.1.0": "nolink"}, connected=False, last_rx_age=None)
         q = Pi(rem, mon, "quiet")
-        j = q.run("check", ask="check")
+        j = q.run("check", ask="install")
         check("no boiler on the line (switched off): it updates, and the link is not part of the test", j.get("code") == "updated" and q.on("v1.1.0"), (j, q.out))
         reset(connected=False, last_rx_age=30)
         q2 = Pi(rem, mon, "quiet2")
-        j = q2.run("check", ask="check")
+        j = q2.run("check", ask="install")
         check("the boiler fell silent a moment ago: not a safe time, waits and gives up", j.get("code") == "busy" and q2.on("v1.0.0") and q2.untouched(), (j, q2.out))
 
     # --- docker does not start the new version: never "updated"
@@ -684,7 +706,7 @@ def updater_tests():
         reset()
         u = Pi(rem, mon, "u_" + flag)
         open(os.path.join(u.fake, flag), "w").close()
-        j = u.run("check", ask="check")
+        j = u.run("check", ask="install")
         check(f"docker compose up {'fails' if flag == 'up_fail' else 'leaves the old image running'}: rolled back, not 'updated'",
               j.get("code") == "rolled_back" and j.get("why") == "swap" and u.on("v1.0.0") and u.rc == 1 and u.untouched()
               and u.has("bad-v1.1.0"), (j, u.out))
@@ -693,14 +715,14 @@ def updater_tests():
     reset()
     si = Pi(rem, mon, "same")
     open(os.path.join(si.fake, "same_image"), "w").close()
-    j = si.run("check", ask="check")
+    j = si.run("check", ask="install")
     check("a release with the same image (only the updater changed): installed, not rolled back",
           j.get("code") == "updated" and si.version() == "v1.1.0" and si.head() == "v1.1.0" and si.running() == "img-v1.0.0"
           and not si.has("bad-v1.1.0") and si.untouched(), (j, si.out))
     reset(behave={"img-v1.0.0": "settings"})
     sf = Pi(rem, mon, "same_fail")
     open(os.path.join(sf.fake, "same_image"), "w").close()
-    j = sf.run("check", ask="check")
+    j = sf.run("check", ask="install")
     check("a same-image release (only docker-compose.yml) fails its test: the container is started again from the old files",
           j.get("code") == "rolled_back" and sf.docker().count("compose up") == 2 and sf.on("v1.0.0") and sf.has("bad-v1.1.0")
           and sf.untouched(), (j, sf.out, sf.docker()))
@@ -708,14 +730,14 @@ def updater_tests():
         reset()
         uk = Pi(rem, mon, "unknown")
         open(os.path.join(uk.fake, "unknown_after_up"), "w").close()
-        j = uk.run("check", ask="check")
+        j = uk.run("check", ask="install")
         check("docker cannot tell what runs after the swap: undone, but the release is not marked as failed",
               j.get("code") == "rolled_back" and not uk.has("bad-v1.1.0") and uk.head() == "v1.0.0" and uk.tag() == "img-v1.0.0"
               and uk.untouched(), (j, uk.out))
         reset()
         bt = Pi(rem, mon, "slowbuild")
         open(os.path.join(bt.fake, "build_slow"), "w").close()
-        j = bt.run("check", ask="check", BUILD_TIMEOUT=1)
+        j = bt.run("check", ask="install", BUILD_TIMEOUT=1)
         check("a build that takes too long is stopped and counts as failed", j.get("code") == "build_failed"
               and bt.on("v1.0.0") and "longer than" in bt.out and bt.has("buildfail-v1.1.0"), (j, bt.out))
 
@@ -739,7 +761,7 @@ def updater_tests():
         po = Pi(rem, mon, "port", URL="")
         with open(os.path.join(po.fake, "env"), "w", newline="\n") as fh:
             fh.write(f"PATH=/usr/bin\nBURNER_HTTP_PORT={mon.port}\nBURNER_KEEP_DAYS=30\n")
-        j = po.run("check", ask="check")
+        j = po.run("check", ask="install")
         check("the page's port is read from the container (BURNER_HTTP_PORT), not taken as 8787",
               j.get("code") == "updated" and po.on("v1.1.0"), (j, po.out))
     reset(behave={"img-v1.0.0": "down"})
@@ -773,7 +795,7 @@ def updater_tests():
     lc = Pi(rem, mon, "local")
     with open(os.path.join(lc.app, "docker-compose.yml"), "a", newline="\n") as fh:
         fh.write("# my change\n")
-    j = lc.run("check", ask="check")
+    j = lc.run("check", ask="install")
     check("local changes in the program folder: not installed, the change is kept", j.get("code") == "local_changes" and lc.rc == 1
           and "build" not in lc.docker() and "# my change" in open(os.path.join(lc.app, "docker-compose.yml")).read()
           and lc.head() == "v1.0.0", (j, lc.out))
@@ -782,17 +804,17 @@ def updater_tests():
     reset()
     f = Pi(rem, mon, "f")
     open(os.path.join(f.fake, "build_fail"), "w").close()
-    j = f.run("check", ask="check")
+    j = f.run("check", ask="install")
     check("the build fails (internet lost, disk full): the old version stays", j.get("code") == "build_failed" and f.on("v1.0.0")
           and "compose up" not in f.docker() and f.untouched() and not f.has("bad-v1.1.0"), (j, f.out))
     os.remove(os.path.join(f.fake, "build_fail"))
     reset(state=5)
-    j = f.run("check", ask="check")
+    j = f.run("check", ask="install")
     check("burner busy all the time: built, never swapped, the old version stays", j.get("code") == "busy" and f.on("v1.0.0")
           and "compose build" in f.docker() and "compose up" not in f.docker() and f.untouched(), (j, f.out))
     if FULL:
         reset(busy_polls=3)
-        j = f.run("check", ask="check", WAIT_PAGE=60)
+        j = f.run("check", ask="install", WAIT_PAGE=60)
         check("burner busy, then off: installed when it is off", j.get("code") == "updated" and f.on("v1.1.0")
               and "waits until the burner is off" in open(os.path.join(f.data, "update.log")).read(), (j, f.out))
 
@@ -800,8 +822,8 @@ def updater_tests():
         reset()
         bf = Pi(rem, mon, "buildfail")
         open(os.path.join(bf.fake, "build_fail"), "w").close()
-        codes = [bf.run("check", ask="check").get("code") for _ in range(3)]
-        j = bf.run("check", ask="check")
+        codes = [bf.run("check", ask="install").get("code") for _ in range(3)]
+        j = bf.run("check", ask="install")
         check("a build that failed 3 times: the release is skipped, nothing built", codes == ["build_failed"] * 3
               and j.get("code") == "bad_skipped" and "build" not in bf.docker() and bf.on("v1.0.0"), (codes, j, bf.out))
         os.remove(os.path.join(bf.fake, "build_fail"))
@@ -906,7 +928,7 @@ def updater_tests():
                 fh.write(cur + "\n")
         else:
             n = Pi(rem, mon, "n_" + cur.replace(".", "_"), version=cur)
-        j = n.run("check", ask="check")
+        j = n.run("check", ask="install")
         check(f"running {cur}, newest release v1.1.0: {want}", j.get("code") == want and ("build" in n.docker()) == (want == "updated"), (j, n.out))
 
     # --- commits after a tag (v1.0.0-57-gabc): a branch copy, never replaced at night, though v1.0.0 < v1.1.0
@@ -935,7 +957,7 @@ def updater_tests():
         git(br.app, "commit", "-q", "-m", "mine")
         with open(os.path.join(br.state, "version"), "w", newline="\n") as fh:
             fh.write("v1.1.0-1-g0123abc\n")
-        j = br.run("check", ask="check")
+        j = br.run("check", ask="install")
         check("running v1.1.0-1-g... (a commit on top of v1.1.0): the button installs nothing, the commit stays",
               j.get("code") == "uptodate" and "build" not in br.docker() and os.path.exists(os.path.join(br.app, "mine.txt")), (j, br.out))
         with open(os.path.join(br.state, "version"), "w", newline="\n") as fh:
@@ -952,7 +974,7 @@ def updater_tests():
     j = n.run("auto")
     check("running 0123abc (not a release): not installed at night; the button offers it", j.get("code") == "unknown_base"
           and "build" not in n.docker() and X.update_info(n.data)["view"]["btn"] == "install", (j, n.out))
-    j = n.run("check", ask="check")
+    j = n.run("check", ask="install")
     check("running 0123abc, its commit is in v1.1.0's history: the button installs v1.1.0", j.get("code") == "updated"
           and n.on("v1.1.0"), (j, n.out))
     check("... a full clone stays full, and keeps its remotes and their branches",
@@ -962,7 +984,7 @@ def updater_tests():
     m = Pi(rem, mon, "n_main", version="main")
     with open(os.path.join(m.state, "version"), "w", newline="\n") as fh:
         fh.write("abc1234\n")
-    j = m.run("check", ask="check")
+    j = m.run("check", ask="install")
     check("running a branch copy newer than v1.1.0: the button installs nothing (no step back)", j.get("code") == "uptodate"
           and "build" not in m.docker(), (j, m.out))
     check("... its full clone stays full (no --depth) and the files are handed back", git(m.app, "rev-parse", "--is-shallow-repository") == "false"
@@ -972,7 +994,7 @@ def updater_tests():
         sh = Pi(rem, mon, "n_shallow", shallow=True)
         with open(os.path.join(sh.state, "version"), "w", newline="\n") as fh:
             fh.write("abc1234\n")
-        j = sh.run("check", ask="check")
+        j = sh.run("check", ask="install")
         check("a --depth 1 clone of the branch (firstboot): not older than v1.1.0, nothing installed", j.get("code") == "uptodate"
               and "build" not in sh.docker(), (j, sh.out))
 
