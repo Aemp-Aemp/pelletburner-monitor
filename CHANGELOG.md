@@ -4,6 +4,17 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.9
+
+### Better
+- Pellets & ash: pellets left, then Pellets per day (full width), then the ash bin, then Pellets and the weather.
+- History: Burner health, then Lighting time per start, then Starts per day (full width), ..., Did the change help? just above Recent events.
+- Burner health is only on History now; its "I cleaned the burner" button is there too.
+- All cards on /home have the same width, padding and spacing; long titles no longer squeeze on a phone.
+
+### Fixed
+- Two timing races in a Wi-Fi setup test (no change on the Pi).
+
 ## 1.0.8
 
 ### New

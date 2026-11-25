@@ -96,12 +96,14 @@ try:
     check(not state.saved.is_set() and "Vælg et netværk" in body, "server: empty choice asks again")
     data = urllib.parse.urlencode({"net": "Net A", "other": "", "pw": "pw 1"}).encode()
     body = urllib.request.urlopen(base + "/save", data, timeout=5).read().decode()
+    state.saved.wait(2)
     check(state.saved.is_set() and state.request == ("Net A", "pw 1", False), f"server: Save: {state.request}")
     check("pw 1" not in body and "<form" not in body and "Net A" in body, "server: Saved page, no password echo")
     check(state.last_visit >= t0, "server: visits are counted")
     state.saved.clear()
     data = urllib.parse.urlencode({"net": "Net A", "other": "My Hidden", "pw": ""}).encode()
     urllib.request.urlopen(base + "/save", data, timeout=5).read()
+    state.saved.wait(2)          # the server thread may note the request just after the reply has gone out
     check(state.request == ("My Hidden", "", True), f"server: hidden network typed in: {state.request}")
 finally:
     srv.shutdown()

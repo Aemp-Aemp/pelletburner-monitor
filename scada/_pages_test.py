@@ -1,7 +1,8 @@
 """Load test of the two web pages in a real browser (headless Chromium, Playwright): scada/home.html and
 scada/dashboard.html are served by the real program replaying synthetic data (scada/_synth.py), and every main tab
 is opened in English and Danish, and every group of the Settings tab on a phone and on a desktop, and the cards that
-came over from the classic page (Plan: how the plan works out; History: short burns, the fan line). Checks: no console
+came over from the classic page (Plan: how the plan works out; History: short burns, the fan line), and where the two
+day charts sit (Starts per day on History, Pellets per day on Pellets & ash). Checks: no console
 errors, each tab and group shows content, every text exists in both languages, the page sends nothing.
 Every request that is not a GET, or that goes to another host, is blocked. No boiler, no serial port, no internet.
 
@@ -202,6 +203,22 @@ with _synth.Replay(PORT) as rp, sync_playwright() as pw:
             check(f"[{lang} {view}] history: the short burn is a light part of its bar, with a legend", hi["parts"] == 1 and len(hi["leg"]) > 10 and not hi["wide"])
             check(f"[{lang} {view}] history: burner health has its fan line ({hi['fan'][:40]!r})", len(hi["fan"]) > 8 and "{" not in hi["fan"])
             texts[("card", "history", lang)] = hi["leg"] + hi["fan"]
+            # ---- the day charts: each in its own full-width card, "Starts per day" on History, "Pellets per day" on Pellets & ash
+            lay = """v=>{const k=[...document.getElementById(v).children], at=q=>k.findIndex(e=>e.matches(q)||e.querySelector(q)), w=e=>Math.round(e.getBoundingClientRect().width);
+                return {at:{ign:at('#cIgn'),batch:at('#batchRow'),spd:at('#cSPD'),ppd:at('#cPPD'),ash:at('#cAsh'),hero:at('.phero')},
+                    same:k.filter(e=>e.matches('.card,.phero')).every(e=>w(e)===w(k[k.length-1])),bars:document.querySelectorAll('#cPPD svg rect').length,
+                    dots:document.querySelectorAll('#cPPD svg circle').length,note:!!document.querySelector('#cPPD .note'),
+                    wide:document.documentElement.scrollWidth>window.innerWidth+1}}"""
+            la = p2.evaluate(lay, "v-history")["at"] | {"same": p2.evaluate(lay, "v-history")["same"]}
+            check(f"[{lang} {view}] history: 'Starts per day' is a full-width card under the lighting times, 'Pellets per day' is not here",
+                  0 <= la["ign"] < la["batch"] < la["spd"] == la["batch"] + 1 and la["ppd"] == -1 and la["same"])
+            p2.evaluate("location.hash='#pellets'")
+            p2.wait_for_selector("#cPPD svg", timeout=15000)
+            p2.wait_for_timeout(300)
+            la = p2.evaluate(lay, "v-pellets")
+            check(f"[{lang} {view}] pellets: 'Pellets per day' is a full-width card between the pellets and the ash bin ({la['bars']} bars, {la['dots']} dots)",
+                  la["at"]["hero"] == 0 and la["at"]["ppd"] == 1 and la["at"]["ash"] == 2 and la["at"]["spd"] == -1 and la["same"]
+                  and la["bars"] > 0 and (la["dots"] > 0) == la["note"] and not la["wide"])
             if view == "phone":
                 # the day chart on a phone: crowded start times use a third label row instead of losing one (made-up plan)
                 p2.evaluate("location.hash='#now'")

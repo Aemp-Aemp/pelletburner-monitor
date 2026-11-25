@@ -376,7 +376,6 @@ html.fx-hid .fire *{animation-play-state:paused!important}
 .try{background:var(--tryBg);border:1.5px dashed var(--tryLine);box-shadow:none}
 .try li{list-style:none;font-size:15px;padding:9px 0 9px 26px;position:relative;font-weight:500}
 .try li::before{content:"";position:absolute;left:4px;top:15px;width:8px;height:8px;border-radius:50%;background:var(--ember)}
-.hist2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
 .po{display:grid;gap:22px;margin-top:8px}.po.two{grid-template-columns:1fr 1fr;gap:32px}.po-part{min-width:0}.po-part .cardh b{font-weight:650;font-size:15px}
 .po-head{font-size:17px;font-weight:600;margin-top:2px}
 .wi{display:flex;gap:4px;margin-top:12px}.wi>div{flex:1 1 0;min-width:0;max-width:64px;display:grid;justify-items:center;gap:5px;text-align:center}
@@ -499,7 +498,7 @@ html.su-on .wrap,html.su-on .tabbar{display:none}
   .phero{grid-template-columns:minmax(0,1fr);text-align:center;padding:22px 18px;gap:12px}
   .phero .ledger{margin-left:auto;margin-right:auto;text-align:left}
   .phero .ctl{justify-content:center}
-  .grid3,.grid2,.hist2,#batchRow{grid-template-columns:minmax(0,1fr)!important}
+  .grid3,.grid2,#batchRow{grid-template-columns:minmax(0,1fr)!important}
   .h1{font-size:32px}
 }
 @media (max-width:640px){
@@ -514,6 +513,7 @@ html.su-on .wrap,html.su-on .tabbar{display:none}
   .stat .v small{font-size:11px;margin-left:2px}
   .wrap{overflow-x:hidden}
   .card{padding:16px 18px;border-radius:20px}
+  .cardh{flex-wrap:wrap;row-gap:2px}
   .hero,.ahero,.phero{border-radius:24px}
   .lead{font-size:15px}
   .h1{font-size:28px}
@@ -2540,7 +2540,7 @@ function healthHead(rows){
 function healthChecklistHTML(clean){
   if(!OPT) return "";
   const rows=healthRows(), h=healthHead(rows), col={ok:"var(--ok)",bad:"var(--amberText)",learn:"var(--ink3)"}[h.cls];
-  const at=OPT.health&&OPT.health.cleaned_at, sub=clean&&at?t("hl_sub",{d:dmon(at)}):t("bh_sub");
+  const at=OPT.health&&OPT.health.cleaned_at, sub=at?t("hl_sub",{d:dmon(at)}):t("bh_sub");
   const line=(r,more)=>`<i class="${r.st}">${r.st==="ok"?"✓":r.st==="bad"?"!":"…"}</i><div><b>${esc(t("bh_"+r.k))}</b><span>${esc(r.st==="learn"?t("bh_learning"):r.txt)}</span></div>${r.ref||more?`<em>${esc(r.ref||"")}${more?'<span class="cv" aria-hidden="true">▾</span>':""}</em>`:""}`;
   const body=rows.map(r=>{
     if(clean) return `<a href="#history" data-bhgo="${r.k}">${line(r,true)}</a>`;
@@ -2548,9 +2548,9 @@ function healthChecklistHTML(clean){
     return d?`<details id="bh-${r.k}" data-bh="${r.k}"${bhOpen(r)?" open":""}><summary>${line(r,true)}</summary><div class="hcb">${d}</div></details>`:`<div>${line(r)}</div>`; }).join("");
   return `<div class="card" ${clean?"":'id="health" '}style="margin-top:${clean?20:0}px"><div class="cardh"><span class="lbl h">${esc(t("bh_h"))}</span><span class="note">${esc(sub)}</span></div>
     <div style="font-size:22px;font-weight:650;letter-spacing:-.02em;margin-top:4px;color:${col}">${esc(h.txt)}</div>
-    <div class="hc">${body}</div>${clean?`
+    <div class="hc">${body}</div>
     <p class="note" style="margin-top:10px">${esc(t("hl_why"))}</p>
-    <div class="ctl" style="margin-top:12px"><button type="button" class="btn sec" data-cleaned="1">${esc(t("hl_cleaned"))}</button></div>`:""}</div>`;
+    <div class="ctl" style="margin-top:12px"><button type="button" class="btn sec" data-cleaned="1">${esc(t("hl_cleaned"))}</button></div></div>`;
 }
 // what a row opens (the words and the layout are in the SHARED block: startsHTML, lhBody, luxHTML, rescListHTML)
 const BH_COL={warn:"var(--amberText)",dim:"var(--ink2)",line:"var(--grid)",ok:"var(--ok)"};
@@ -3329,7 +3329,7 @@ function stockRingHTML(s){
     c:`<div class="eb">${t("at_home_caps")}</div><div class="num" style="font-size:var(--rnum2)">${nf(s.left,0)}<sup>kg</sup></div>`+(s.days_left!=null?`<div class="sub">≈ <b>${esc(t("days_n",{n:s.days_left}).replace("≈ ",""))}</b></div>`:`<div class="sub">${esc(t("pel_est"))}</div>`)});
 }
 function renderPellets(){
-  const el=document.getElementById("v-pellets"), s=OPT&&OPT.stock;
+  const el=document.getElementById("v-pellets"), s=OPT&&OPT.stock, {days, fa}=histStats();
   let head, lead="", ledger="";
   if(!OPT){ head="—"; }
   else if(!s){ head=t("not_setup"); lead=t("setup_hint"); }
@@ -3346,9 +3346,12 @@ function renderPellets(){
       <div class="h1" style="margin-top:16px">${esc(head)}</div>${lead?`<p class="lead" style="margin-top:10px">${esc(lead)}</p>`:""}
       <div class="ctl" style="margin-top:22px"><button type="button" class="btn pri" data-act="deliver">${esc(t("add"))}</button><button type="button" class="btn sec" data-act="count">${esc(t("counted"))}</button><button type="button" class="btn sec" data-act="batch">${esc(t("batch_new"))}</button></div>
       ${ledger}</div></div>
-    ${OPT&&OPT.wx?`<div class="card" style="margin-top:20px"><div id="wxHelp"></div></div>`:""}
-    ${ashCardHTML()}${healthCardHTML()}`;
+    <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("ppd_h"))}</span><span class="note">${fa!=null?esc(t("ppd_sub",{a:nf(fa,1)})):""}</span></div><div class="chart" id="cPPD"></div></div>
+    ${ashCardHTML()}
+    ${OPT&&OPT.wx?`<div class="card" style="margin-top:20px"><div id="wxHelp"></div></div>`:""}`;
   if(OPT&&OPT.wx) pwDraw(document.getElementById("wxHelp"),OPT.wx,s,GR_COL,!!(S&&S.weather&&S.weather.enabled));
+  const wd=(S&&S.weather&&S.weather.enabled&&S.weather.days)||{}, sh=fa==null?[]:days;   // no finished day that burned: "No days recorded yet", not empty axes
+  bars(document.getElementById("cPPD"), dayLabels(days), sh.map(dayFuel), "#C99A5B", "kg", sh.map(d=>wd[d.day]??null));
   chartAsh(document.getElementById("cAsh"));
 }
 // ash build-up: bars = ash made each day (from that day's pellets), line = ash in the bin since "Just emptied",
@@ -3391,7 +3394,7 @@ document.addEventListener("click",async e=>{
 });
 // lighting time per start + pellet batches: how the burner behaves -> History tab
 function ignSectionHTML(v){
-  return `<div class="card" style="margin-top:20px;padding:26px 28px">
+  return `<div class="card" style="margin-top:20px">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
         <div><div style="font-size:22px;font-weight:650;letter-spacing:-.02em">${esc(v?v.h:t("ign_title"))}</div>
         <div style="font-size:15px;color:var(--ink2);margin-top:4px">${esc(v?v.l:"")}</div></div>
@@ -3533,7 +3536,8 @@ function bars(el, labels, values, color, unit, temps, part, partTip){
     const pv=part?Math.min(part[i]||0,v||0):0;
     if(pv>0) s+=`<rect class="bar-part" x="${x.toFixed(1)}" y="${(y1-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h*pv/v).toFixed(1)}" rx="${Math.min(4,bw/2).toFixed(1)}" style="fill:var(--card);pointer-events:none" opacity=".6"/>`; });
   const step=Math.ceil(n/Math.max(2,Math.floor((x1-x0)/56)));
-  labels.forEach((l,i)=>{ if((n-1-i)%step===0) s+=`<text class="ax" x="${(x0+gw*(i+0.5)).toFixed(1)}" y="170" text-anchor="middle">${esc(l)}</text>`; });
+  labels.forEach((l,i)=>{ if((n-1-i)%step===0){ const cx=x0+gw*(i+0.5), end=cx+l.length*3.4>W;      // a long last label ("today") stays inside the chart
+    s+=`<text class="ax" x="${(end?W:cx).toFixed(1)}" y="170" text-anchor="${end?"end":"middle"}">${esc(l)}</text>`; } });
   if(tv.length){ const tlo=Math.floor(Math.min(0,...tv)/5)*5, thi=Math.max(tlo+10,Math.ceil(Math.max(...tv)/5)*5), YT=v=>y1-(y1-y0)*(v-tlo)/(thi-tlo);
     [tlo,thi].forEach(v=>{ s+=`<text class="ax" x="${x1+5}" y="${(YT(v)+4).toFixed(1)}" style="fill:var(--outLine,#4E8FD0)">${v}°</text>`; });
     const pts=temps.map((v,i)=>v==null?null:[x0+gw*(i+0.5),YT(v),v]).filter(Boolean);
@@ -3581,27 +3585,25 @@ function histStats(){
   const days=((OPT&&OPT.days)||[]).slice(-28), pd=(OPT&&OPT.per_day)||{};
   return {days, fa:pd.kg!=null?pd.kg:null, sa:pd.starts!=null?pd.starts:null};
 }
+// the day charts' labels: 24/12, and "today" for the day that is not over
+function dayLabels(days){ const today=dayKey(); return days.map(d=>{ if(d.day===today) return t("today_sofar"); const p=d.day.split("-"); return (+p[2])+"/"+(+p[1]); }); }
 function renderHistory(){
-  const el=document.getElementById("v-history"), {days, fa, sa}=histStats(), fuel=dayFuel;
+  const el=document.getElementById("v-history"), {days, fa, sa}=histStats();
   const v=IGN?ignVerdict():null;
   const hc=healthChecklistHTML(), chg=!!(OPT&&OPT.change&&OPT.change.changes&&OPT.change.changes.length);
-  el.innerHTML=`${OPT?`<div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:12px"><button type="button" class="btn sec" data-act="share">${esc(t("sh_btn"))}</button><button type="button" class="btn sec" data-act="share2" title="${esc(t("s2_tip"))}">${esc(t("s2_btn"))}</button></div>`:""}${hc}${chg?`<div class="card" style="margin-top:${hc?20:0}px"><div id="chHelp"></div></div>`:""}<div class="hist2" style="margin-top:${hc||chg?20:0}px">
-      <div class="card"><div class="cardh"><span class="lbl h">${esc(t("ppd_h"))}</span><span class="note">${fa!=null?esc(t("ppd_sub",{a:nf(fa,1)})):""}</span></div><div class="chart" id="cPPD"></div></div>
-      <div class="card"><div class="cardh"><span class="lbl h">${esc(t("spd_h"))}</span><span class="note">${sa!=null?esc(t("spd_sub",{a:nf(sa,1)})):""}</span></div><div class="chart" id="cSPD"></div>${fa!=null&&days.some(d=>d.short_burns>0)?`<div class="leg" id="spdLeg" style="margin-top:6px"><span><i style="background:var(--ember)"></i>${esc(t("spd_norm"))}</span><span><i style="background:var(--ember);opacity:.4"></i>${esc(t("spd_short"))}</span></div>`:""}</div>
-    </div>
+  el.innerHTML=`${OPT?`<div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:12px"><button type="button" class="btn sec" data-act="share">${esc(t("sh_btn"))}</button><button type="button" class="btn sec" data-act="share2" title="${esc(t("s2_tip"))}">${esc(t("s2_btn"))}</button></div>`:""}${hc}
     ${ignSectionHTML(v)}
+    <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("spd_h"))}</span><span class="note">${sa!=null?esc(t("spd_sub",{a:nf(sa,1)})):""}</span></div><div class="chart" id="cSPD"></div>${fa!=null&&days.some(d=>d.short_burns>0)?`<div class="leg" id="spdLeg" style="margin-top:6px"><span><i style="background:var(--ember)"></i>${esc(t("spd_norm"))}</span><span><i style="background:var(--ember);opacity:.4"></i>${esc(t("spd_short"))}</span></div>`:""}</div>
     ${lastStartHTML()}
     <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("fp_h"))}</span><span class="note">${esc(t("fp_sub"))}</span></div><div class="chart" id="cFP"></div></div>
+    ${chg?`<div class="card" style="margin-top:20px"><div id="chHelp"></div></div>`:""}
     <div class="card" style="margin-top:20px"><div class="cardh"><span class="lbl h">${esc(t("ev_h"))}</span></div>${eventsHTML(15)}</div>`;
   if(chg) chDraw(document.getElementById("chHelp"),OPT.change,OPT.wx,GR_COL);
   chartFP(document.getElementById("cFP"));
   chartIgn(document.getElementById("cIgn"));
   renderBatches(document.getElementById("batchRow"), v);
-  const today=dayKey();
-  const lab=days.map(d=>{ if(d.day===today) return t("today_sofar"); const p=d.day.split("-"); return (+p[2])+"/"+(+p[1]); });
-  const wd=(S&&S.weather&&S.weather.enabled&&S.weather.days)||{}, sh=fa==null?[]:days;   // no finished day that burned: "No days recorded yet", not empty axes
-  bars(document.getElementById("cPPD"), lab, sh.map(fuel), "#C99A5B", "kg", sh.map(d=>wd[d.day]??null));
-  bars(document.getElementById("cSPD"), lab, sh.map(d=>d.starts), "var(--ember)", "", null, sh.map(d=>d.short_burns||0), (n,k)=>t("spd_tip",{n,s:k}));
+  const sh=fa==null?[]:days;   // no finished day that burned: "No days recorded yet", not empty axes
+  bars(document.getElementById("cSPD"), dayLabels(days), sh.map(d=>d.starts), "var(--ember)", "", null, sh.map(d=>d.short_burns||0), (n,k)=>t("spd_tip",{n,s:k}));
 }
 
 // ============================================================ "Share my burner": one picture (PNG, 1080 px wide) for a post
