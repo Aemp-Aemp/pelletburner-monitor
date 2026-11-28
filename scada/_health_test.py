@@ -29,14 +29,24 @@ try:
     # 2) steady burner -> ok
     o.mod = Mod([rec(i, 4.5 + (i % 2) * 0.2, 150) for i in range(10)])
     h = o.health(days=[])
-    check("steady -> ok", h["status"] == "ok")
+    ck = {c["k"]: c["st"] for c in h["checks"]}
+    check("steady -> lighting and flame ok; the status says learning while other checks learn (no bad)",
+          ck["light"] == "ok" and ck["flame"] == "ok" and h["status"] == "learning")
     # 3) lighting getting slow and flame weaker -> clean
     o.mod = Mod([rec(i, 4.5, 150) for i in range(8)] + [rec(8 + i, 7.5, 110) for i in range(3)])
     h = o.health(days=[])
     check("slower + weaker -> clean", h["status"] == "clean")
     # 4) a different burner with other numbers (8 min, flame 90) that is steady -> ok (own normal, not ours)
     o.mod = Mod([rec(i, 8.0, 90) for i in range(10)])
-    check("other burner, own normal -> ok", o.health(days=[])["status"] == "ok")
+    ck = {c["k"]: c["st"] for c in o.health(days=[])["checks"]}
+    check("other burner, own normal -> ok", ck["light"] == "ok" and ck["flame"] == "ok")
+    # 4b) the status (Home Assistant, the phone's "time to clean") comes from the checklist the pages show
+    real = o.checks
+    for sts, want in ((["ok"] * 6, "ok"), (["ok"] * 5 + ["learn"], "learning"), (["ok", "bad", "learn"], "watch"),
+                      (["bad", "ok", "bad"], "clean"), ([], "learning")):
+        o.checks = lambda items, days, sts=sts: [{"k": str(i), "st": x} for i, x in enumerate(sts)]
+        check(f"status from the checklist: {sts} -> {want}", o.health()["status"] == want)
+    o.checks = real
     # 5) burner + fan cleaned (the dialog's default): time to flame and failed starts learn again, the flame sensor
     # items do not (the glass was not touched)
     st0 = lambda h, k: next(i for i in h["items"] if i["key"] == k)["state"]
@@ -92,7 +102,8 @@ try:
     day = lambda n, fl: {"day": f"2026-11-{n:02d}", "running_s": 7200, "flame_power": {"50": [3600, fl * 3600, 3600, 0, 0]}}
     st.set_internal("health", "cleaned_at", None)
     o.mod = Mod([])
-    h = o.health(days=[day(1, 150), day(2, 150), day(3, 120), day(4, 118)])
+    o.report_days = lambda: [day(1, 150), day(2, 150), day(3, 120), day(4, 118)]
+    h = o.health(days=[])                          # health always takes its own days (report_days)
     rf = [i for i in h["items"] if i["key"] == "run_flame"][0]
     check("running flame drop seen", rf["state"] == "worse" and rf["normal"] == 150)
 finally:

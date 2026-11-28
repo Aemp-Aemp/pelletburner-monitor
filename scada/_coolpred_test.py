@@ -17,7 +17,7 @@ class Mod:   # warm now (62 C): below the RUNNING temperature the start temperat
 
 wm = F.WarmMode.__new__(F.WarmMode)
 wm.mod = Mod()
-w = {"pump_c": 50, "warm_k1": 0.82, "warm_k2": 1.46, "warm_learn": []}
+w = {"warm_learn": []}
 check("cooling with 4 h default: 49 C -> ~23 C after 7,5 h", 21 < wm.predict_bc(w, 49.0, 7.5) < 26)
 now = time.mktime((2000, 1, 1, 20, 10, 0, 0, 0, -1))           # fixed clock: the result must not depend on when the test runs
 lead_now = wm.lead_min(w)                                   # from 62 C as it is now

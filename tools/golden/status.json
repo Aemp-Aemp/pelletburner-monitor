@@ -1356,7 +1356,6 @@
 }
 ],
 "plan":[],
-"pump_c":50,
 "rest_since":null,
 "source":"board",
 "start_window_min":30,

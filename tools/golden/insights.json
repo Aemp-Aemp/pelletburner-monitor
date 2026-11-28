@@ -399,8 +399,8 @@
 0
 ],
 "name":{
-"da":"Tænding",
-"en":"Ignition"
+"da":"Optænding",
+"en":"Lighting"
 },
 "state":3,
 "unit":"h"
@@ -425,7 +425,7 @@
 0
 ],
 "name":{
-"da":"Venter",
+"da":"Afventer",
 "en":"Waiting"
 },
 "state":1,
@@ -497,8 +497,8 @@
 },
 "id":"ign_minutes",
 "text":{
-"da":"4 af 4 tændinger fik flamme; typisk 4,8 min. Regnet fra tændingen begynder til flammen er stærk nok. Starter uden flamme (stoppet eller mislykket) er udeladt af grafen; starter hvor flammen allerede var der tælles ikke med. Målt ud fra målingerne, ikke kedlens egen log.",
-"en":"4 of 4 ignitions found a flame; typical 4.8 min. Counted from when lighting begins until the flame is strong enough. Starts without a flame (stopped or failed) are left out of the chart; starts where the flame was already on are not counted. Measured from the readings, not from the boiler's own log."
+"da":"4 af 4 tændinger fik flamme; typisk 4,8 min. Regnet fra tændingen begynder til flammen er stærk nok. Starter uden flamme (stoppet eller mislykket) er udeladt af grafen; genoptændinger og starter hvor flammen allerede var der tælles ikke med. Målt ud fra målingerne, ikke kedlens egen log.",
+"en":"4 of 4 ignitions found a flame; typical 4.8 min. Counted from when lighting begins until the flame is strong enough. Starts without a flame (stopped or failed) are left out of the chart; relights and starts where the flame was already on are not counted. Measured from the readings, not from the boiler's own log."
 },
 "title":{
 "da":"Minutter til flamme, hver start",

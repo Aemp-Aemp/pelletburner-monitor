@@ -223,7 +223,7 @@ DEFAULTS = {
     # first-start guide on the web page: done = never show it by itself again (also set by "Skip"). lang = the
     # language picked in the guide (default for devices that have not chosen one); boiler_kw = 10/15/25 kW model;
     # store_kg = what the pellet store / silo holds. Only for the page: nothing here is ever sent to the boiler.
-    "setup": {"done": False, "at": None, "lang": "", "boiler_kw": None, "store_kg": None},               # burner health: the normal is learned again after a cleaning                      # ignition history shown from this time (hide bench tests)
+    "setup": {"done": False, "at": None, "lang": "", "boiler_kw": None, "store_kg": None},
     # automatic alarm reset: clear + restart like the owner does by hand (opt-in)
     "auto_reset": {"enabled": False, "alarms": [4, 5, 6], "max_per_day": 2, "wait_min": 10},
     "auto_reset_stats": {"saves": 0, "last_save": None, "attempts": [], "last_attempt": None},
@@ -239,10 +239,8 @@ DEFAULTS = {
     "warm": {"enabled": False, "use_board": True, "stop_pct": 40, "stop_after_min": 2, "pause_h": 6,
              "boosts": ["05:00", "17:00"], "start_window_min": 30, "max_attempts": 3, "retry_wait_s": 90,
              "periods": [], "keep_restart_c": 5, "keep_min_off_min": 15,
-             "min_boiler_c": 0, "warm_k": 1.8, "warm_learn": [], "cool_learn": [],
-             # warm-up in two speeds: fast until the pump starts (heat stays in the boiler), slow after (house takes it).
-             # Defaults measured on a real burner: 25 -> 50 °C 0.8 min/°C, 50 -> 60 °C 1.5 min/°C. pump_c = PUMP START TEMPERATURE.
-             "pump_c": 50, "warm_k1": 0.8, "warm_k2": 1.5},
+             "min_boiler_c": 0, "warm_learn": [], "cool_learn": []},
+    # (older settings files may still hold warm_k, warm_k1, warm_k2 and pump_c: nothing reads them, update() skips them)
     # the boiler's own minimum mode (MINIMUMDRIFT AKTIV) is not among the settings the board sends: it is seen from
     # what the boiler does (DRIFT -> WAITING by itself). last = last such burn-out, off_at = the owner said "I turned it
     # off" (page only; nothing is ever sent to the boiler). Not editable through /api/settings.
@@ -683,7 +681,7 @@ class Settings:
                 for k, lo, hi in (("stop_pct", 10, 100), ("stop_after_min", 0, 60), ("pause_h", 0, 48),
                                   ("start_window_min", 5, 120), ("max_attempts", 1, 10), ("retry_wait_s", 30, 900),
                                   ("keep_restart_c", 1, 30), ("keep_min_off_min", 0, 240),
-                                  ("min_boiler_c", 0, 60), ("pump_c", 30, 80)):
+                                  ("min_boiler_c", 0, 60)):
                     if k in s:
                         v = _int(s[k])
                         if v is None or not lo <= v <= hi:
@@ -821,11 +819,6 @@ class Settings:
 
 
 # ============================================================================ scheduler
-def _mins(hhmm):
-    h, m = hhmm.split(":")
-    return int(h) * 60 + int(m)
-
-
 class Scheduler:
     """Start windows. Only STOPPET counts as idle (the boiler ignores run_mode=start in WAITING;
     ALARM is never auto-cleared). With override_waiting, a WAITING (minimum-drift) pause inside a
@@ -854,7 +847,7 @@ class Scheduler:
         for i, w in enumerate(sch.get("windows", [])):
             if not w.get("on", True):
                 continue
-            a, b = _mins(w["start"]), _mins(w["end"])
+            a, b = hhmm_to_min(w["start"]), hhmm_to_min(w["end"])
             if a < b:
                 if dt.weekday() in w["days"] and a <= m < b:
                     return f"{dt.date()}#{i}", w
@@ -1308,13 +1301,15 @@ class IgnitionLog:
         for r in recs:
             r["batch"] = show(r.get("batch"))
         stats = {}
-        for r in recs:
+        for r in recs:                             # per batch: real lightings only (no relights, no resumes)
+            if not real_lighting(r):
+                continue
             s = stats.setdefault(r["batch"], {"n": 0, "ok": 0, "failed": 0, "minutes": [], "flame": []})
             s["n"] += 1
             if r["result"] == "ok":
                 s["ok"] += 1
                 s["minutes"].append(r["minutes"])
-                if r["flame_min"] is not None:
+                if lit(r):
                     s["flame"].append(r["flame_min"])
             elif r["result"] == "failed":
                 s["failed"] += 1
@@ -1334,7 +1329,7 @@ class IgnitionLog:
             light_help = None
         # same comparison per ignition-settings combination (what helps ignition?)
         by_cfg = {}
-        withcfg = [r for r in recs if not r.get("relight") and not r.get("resumed") and r.get("cfg")]
+        withcfg = [r for r in recs if real_lighting(r) and r.get("cfg")]
         # only the settings that actually differ between attempts are shown (the rest is the same everywhere)
         vary = [k for k in IGN_CFG if len({str(r["cfg"].get(k)) for r in withcfg}) > 1] or list(IGN_CFG)[:1]
         raw_now = (getattr(self.mod, "latest_cfg", None) or {}).get("raw") or {}
@@ -1404,6 +1399,13 @@ def lit(rec):
             and not resumed(rec))
 
 
+def real_lighting(rec):
+    """THE one rule for "a real lighting": a start attempt that is not a relight (the boiler lighting again from its pause)
+    and not a start that went on burning (resumed). Every time to flame, lighting verdict, per-batch value, the
+    change graph and the Discoveries count only these; lit() then says whether it lit."""
+    return not rec.get("relight") and not resumed(rec)
+
+
 TYPICAL_DAYS = 28                  # "typical" = the median of the starts that lit in the last 4 weeks ...
 TYPICAL_MIN_N = 3                  # ... once there are at least 3 of them
 
@@ -1412,7 +1414,7 @@ def typical_flame(recs, now=None):
     """(typical minutes to flame, how many starts it is from): the median of the starts that lit in the last
     TYPICAL_DAYS days. (None, n) while there are fewer than TYPICAL_MIN_N."""
     t0 = (now or time.time()) - TYPICAL_DAYS * 86400
-    v = [flame_min(r) for r in recs if r["epoch"] >= t0 and lit(r)]
+    v = [flame_min(r) for r in recs if r["epoch"] >= t0 and real_lighting(r) and lit(r)]
     return (round(statistics.median(v), 2) if len(v) >= TYPICAL_MIN_N else None), len(v)
 
 
@@ -1513,7 +1515,7 @@ def lighting_help(records, cfg_raw, sw=None, usual=None, sync=False):
             elif fac is not None and abs(now - fac) > 1e-9:
                 mark = "diff"
         rows.append({"id": k, "now": now, "fac": fac, "ref": LIGHT_WORKED.get(k), "mark": mark})
-    last = [r for r in records if not r.get("relight") and not resumed(r)][-LIGHT_LAST_N:]
+    last = [r for r in records if real_lighting(r)][-LIGHT_LAST_N:]
     judged = [r for r in last if r.get("result") in ("ok", "failed")]
     failed = sum(1 for r in judged if r["result"] == "failed")
     mins = [flame_min(r) for r in judged if lit(r)]
@@ -1852,6 +1854,29 @@ ALARM_HINTS = {2: "thermo switch: check burner plug/cable and for burn-back",
                13: "fuse on the board blown"}
 
 
+def row_fuel_kg(row, dt):
+    """THE fuel estimate of one history row: kg fed in the dt seconds after it = power x fuel rate, only while
+    running (DRIFT). Used by the day summaries and the Discoveries (scada/insights_gen.py)."""
+    if _int(row.get("state")) != 4:
+        return 0.0
+    p, g = _f(row.get("power_pct")), _f(row.get("fuel_gph"))
+    return p / 100 * g / 1000 * dt / 3600 if p is not None and g else 0.0
+
+
+def silo_step(prev, row):
+    """kg the boiler's silo counter went down between two rows (a rise = a refill, a big jump = a reset: 0)."""
+    a, b = _f(prev.get("silo_kg")), _f(row.get("silo_kg"))
+    return a - b if a is not None and b is not None and 0 < a - b < 5 else 0.0
+
+
+def correction_of(settings):
+    """Factor from the owner's counts: real kg burned / estimated kg burned (median of the last 3, 0.5..1.5).
+    settings = Settings or the plain settings dict."""
+    cs = [c["f"] for c in (((settings.get("pellets") or {}).get("corrections") or []) if settings else [])
+          if isinstance(c, dict) and c.get("f")]
+    return round(statistics.median(cs[-3:]), 3) if cs else 1.0
+
+
 def summarise_rows(rows):
     """One day's history rows -> summary dict."""
     rows = sorted((r for r in rows if r.get("epoch")), key=lambda r: r["epoch"])
@@ -1896,13 +1921,11 @@ def summarise_rows(rows):
                         if rpm:
                             b[3] += rpm * dt
                             b[4] += dt
-                        if g:
-                            s["fuel_est_kg"] += p / 100 * g / 1000 * dt / 3600
-                            if pre:
-                                early["kg"] += p / 100 * g / 1000 * dt / 3600
-            a, b = _f(prev.get("silo_kg")), _f(r.get("silo_kg"))
-            if a is not None and b is not None and 0 < a - b < 5:      # increases = refill, big jumps = reset
-                s["fuel_silo_kg"] += a - b
+                        kg = row_fuel_kg(prev, dt)
+                        s["fuel_est_kg"] += kg
+                        if pre:
+                            early["kg"] += kg
+            s["fuel_silo_kg"] += silo_step(prev, r)
             if st != pst:
                 if st == 2:
                     s["starts"] += 1
@@ -2066,9 +2089,8 @@ class Optimiser:
         return self._stock_out(st, p, raw * corr, raw, corr, [day_fuel(s) * corr for s in self.per_day_days()])
 
     def correction(self):
-        """Factor from the owner's counts: real kg burned / estimated kg burned (median of the last 3, 0.5..1.5)."""
-        cs = [c["f"] for c in ((self.settings.get("pellets") or {}).get("corrections") or []) if c.get("f")]
-        return round(statistics.median(cs[-3:]), 3) if cs else 1.0
+        """Factor from the owner's counts (correction_of)."""
+        return correction_of(self.settings)
 
     def burned_since(self, at):
         """Estimated kg of pellets burned since epoch `at` (silo counter where it moved, else power x fuel rate)."""
@@ -2170,11 +2192,14 @@ class Optimiser:
         minutes to flame, flame at the start, lightings that failed, flame at the same power while running. Each
         check says "learning" until there is enough of its own data. Time to flame and failed starts start again at
         the "burner cleaned" mark (cleaned_at); the two flame checks only when the flame sensor glass was cleaned
-        (the flame sensor's relearn, lux reset_epoch): cleaning the pot does not change what the sensor sees."""
+        (the flame sensor's relearn, lux reset_epoch): cleaning the pot does not change what the sensor sees.
+        status (Home Assistant, the phone's "time to clean" alert) comes from the same checklist the pages show
+        (checks): "clean" with 2 or more checks bad, "watch" with 1, "learning" while one is still learning, else
+        "ok". `days` is not used any more: health always takes report_days(), so every caller gets the same answer."""
         cleaned = (self.settings.get("health") or {}).get("cleaned_at") or 0
         sensor = (self.settings.get("lux") or {}).get("reset_epoch") or 0
         ig = getattr(self.mod, "ignitions", None)
-        allr = [r for r in (list(ig.records) if ig else []) if not r.get("relight") and not resumed(r)]
+        allr = [r for r in (list(ig.records) if ig else []) if real_lighting(r)]
         recs = [r for r in allr if (r.get("epoch") or 0) >= cleaned]
         # the boiler type changed: lighting is judged against the starts since then (older ones until 3 lit)
         ok = [r for r in baseline_split(recs, baseline_since(self.settings))[0] if lit(r)]
@@ -2210,8 +2235,7 @@ class Optimiser:
         items.append({"key": "failed", "state": "learning" if len(last) < 5 else ("worse" if failed >= 2 else "ok"),
                       "now": failed, "n": len(last), "need": 5})
         # flame at the same power while running: the latest 2 burning days against the days before them
-        if days is None:
-            days = self.report_days()
+        days = self.report_days()
         cday = datetime.date.fromtimestamp(sensor).isoformat() if sensor else ""
         burn = [d for d in days if d.get("running_s", 0) > 1800 and d.get("day", "") >= cday]
         if len(burn) < 4:
@@ -2234,12 +2258,13 @@ class Optimiser:
                 n = statistics.mean(new[k] for k in common)
                 items.append({"key": "run_flame", "state": "worse" if o - n > max(10, 0.12 * o) else "ok",
                               "now": round(n), "normal": round(o), "unit": "", "n": len(burn)})
-        known = [i for i in items if i["state"] != "learning"]
-        worse = [i for i in known if i["state"] == "worse"]
-        status = "learning" if not known else ("clean" if len(worse) >= 2 else ("watch" if worse else "ok"))
+        checks = self.checks(items, days)
+        bad = sum(1 for c in checks if c["st"] == "bad")
+        status = ("clean" if bad >= 2 else "watch" if bad else
+                  "learning" if not checks or any(c["st"] == "learn" for c in checks) else "ok")
         marks = clean_marks_of(self.settings)
         return {"status": status, "items": items, "cleaned_at": cleaned or None, "sensor_at": sensor or None,
-                "last_clean": marks[-1] if marks else None, "checks": self.checks(items, days)}
+                "last_clean": marks[-1] if marks else None, "checks": checks}
 
     def checks(self, items, days):
         """THE burner-health checklist, the one every page and the share picture show: time to flame, flame sensor,
@@ -2374,8 +2399,13 @@ class Optimiser:
                              (per_day or self.per_day()).get("kg"), now)
             fc = w.forecast() if w and hasattr(w, "forecast") else []
             wx = wx_forecast(wx, fc, stock, now)
-            if stock and wx.get("buy_by") is not None and stock.get("buy_by") is not None:
-                stock["buy_by_flat"], stock["buy_by"], stock["buy_by_src"] = stock["buy_by"], wx["buy_by"], "weather"
+            if stock and wx_use_buy(wx) and stock.get("buy_by") is not None:
+                # one date on the whole card: days left and kg a day follow the weather too (the flat ones are kept)
+                t = now or time.time()
+                stock.update(buy_by_flat=stock["buy_by"], days_left_flat=stock.get("days_left"),
+                             per_day_flat=stock.get("per_day"), buy_by=wx["buy_by"], buy_by_src="weather",
+                             days_left=round((wx["last_to"] - t) / 86400) if wx.get("last_to") else stock.get("days_left"),
+                             per_day=round(statistics.mean(x[2] for x in wx["fc"]), 1))
         except Exception as e:
             self.log(f"# pellets and weather error: {e!r}")
         try:
@@ -2481,14 +2511,16 @@ class Optimiser:
 # A change = the boiler settings in force differ from the start before (cfg on each start record, and
 # data/cfg_changes.jsonl), a new pellet batch, or "I cleaned the burner" (Burner health). Changes closer than
 # CH_MERGE_S are one change: all of them are listed and none is credited alone.
-CH_NEED = 5                    # at least 5 comparable starts (or days) on each side before a verdict
+CH_NEED = 8                    # at least 8 comparable starts (or days) on each side before a verdict
 CH_BAND_C = 8                  # comparable = boiler temperature at start within ±8 °C of the middle start of both sides
 CH_MERGE_S = 6 * 3600          # changes within 6 h are one change
 CH_WINDOW_D = 21               # each side looks at most 3 weeks away from the change ...
 CH_MAX_N = 20                  # ... and at most 20 starts
 CH_KEEP = 8                    # the newest 8 changes can be picked
 CH_PHONE_D = 14                # the phone "status" answer mentions a change of the last 14 days
-CH_RATE_D = 0.2                # failed starts / short burns: 20 percentage points apart, and 2 or more on the bad side
+CH_RATE_D = 0.3                # failed starts / short burns: 30 percentage points apart, ...
+CH_RATE_MORE = 3               # ... at least 3 more on the bad side than the other side's rate gives ...
+CH_RATE_P = 0.1                # ... and a one-sided Fisher exact test below 0.1 (no such difference by chance)
 # a difference smaller than this is "the same", even when the middle halves do not overlap
 CH_MIN_DIFF = {"flame": 0.5, "full": 2.0, "power_flame": 5.0, "wx": 0.5}
 CH_LOWER_BETTER = {"flame": True, "full": True, "power_flame": False, "wx": True}
@@ -2497,8 +2529,10 @@ CH_FULL_MIN_S = 600            # ... with at least 10 minutes there that day
 
 
 def _quart(v):
-    """(first quartile, third quartile) of a list of 2 or more numbers."""
-    q = statistics.quantiles(v, n=4, method="inclusive")
+    """(first quartile, third quartile) of a list of 2 or more numbers. From 4 numbers the "exclusive" method (the
+    wider middle half): with 8 starts a side a change that did nothing gives a verdict about 2 % of the time
+    (scada/_graphs_test.py simulates it); the "inclusive" one gave about 6 %."""
+    q = statistics.quantiles(v, n=4, method="exclusive" if len(v) >= 4 else "inclusive")
     return q[0], q[2]
 
 
@@ -2514,14 +2548,22 @@ def ch_judge(before, after, key):
     return "better" if (ma < mb) == CH_LOWER_BETTER[key] else "worse"
 
 
+def _fisher_p(k1, n1, k2, n2):
+    """One-sided Fisher exact test: the chance that side 1 gets k1 or more of the k1 + k2 events by luck alone."""
+    k, n = k1 + k2, n1 + n2
+    return sum(math.comb(n1, i) * math.comb(n2, k - i) for i in range(k1, min(k, n1) + 1)) / math.comb(n, k)
+
+
 def ch_judge_rate(kb, nb, ka, na):
-    """Verdict for a count out of a total (failed starts, short burns): lower is better."""
+    """Verdict for a count out of a total (failed starts, short burns): lower is better. Worse (or better) only when
+    the bad side's share is CH_RATE_D higher, it has CH_RATE_MORE more than the other side's share gives, and the
+    Fisher test says that is unlikely by chance (CH_RATE_P)."""
     if nb < CH_NEED or na < CH_NEED:
         return "few"
     d = ka / na - kb / nb
-    if d >= CH_RATE_D and ka >= 2:
+    if d >= CH_RATE_D and ka - kb * na / nb >= CH_RATE_MORE and _fisher_p(ka, na, kb, nb) < CH_RATE_P:
         return "worse"
-    if -d >= CH_RATE_D and kb >= 2:
+    if -d >= CH_RATE_D and kb - ka * nb / na >= CH_RATE_MORE and _fisher_p(kb, nb, ka, na) < CH_RATE_P:
         return "better"
     return "same"
 
@@ -2535,7 +2577,7 @@ def _net(rows):
             out[f]["new"] = r.get("new")
         else:
             out[f] = {"k": "cfg", "field": f, "old": r.get("old"), "new": r.get("new")}
-    return [p for p in out.values() if str(p["old"]) != str(p["new"])]
+    return [p for p in out.values() if p["old"] is not None and p["new"] is not None and str(p["old"]) != str(p["new"])]
 
 
 def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
@@ -2560,23 +2602,26 @@ def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
         ev.append(at[i])
     # 2) the settings on the start records: a field that differs from the start before (not in the history); in a
     # gap that has history rows it joins that change (the same time)
-    prev = None
+    # (a value of None = not sent: never a change, and the value before it stays the one to compare with)
+    prev = {}
     for i, r in enumerate(starts):
-        cfg = r.get("cfg") or {}
-        if cfg and prev:
-            parts = [{"k": "cfg", "field": f, "old": prev[f], "new": cfg[f]} for f in sorted(cfg)
-                     if f in prev and str(prev[f]) != str(cfg[f]) and (i, f) not in covered]
-            if parts and i in at:
-                at[i][1].extend(parts)
-            elif parts:
-                ev.append((r["epoch"] - 1, parts))
-        if cfg:
-            prev = cfg
+        cfg = {f: v for f, v in (r.get("cfg") or {}).items() if v is not None}
+        parts = [{"k": "cfg", "field": f, "old": prev[f], "new": cfg[f]} for f in sorted(cfg)
+                 if f in prev and str(prev[f]) != str(cfg[f]) and (i, f) not in covered]
+        if parts and i in at:
+            at[i][1].extend(parts)
+        elif parts:
+            ev.append((r["epoch"] - 1, parts))
+        prev.update(cfg)
     ev = [e for e in ev if e[1]]
-    # 3) pellet batches and the burner cleaned
-    for b in batches or []:
-        if isinstance(b, dict) and isinstance(b.get("since"), (int, float)) and b.get("name"):
-            ev.append((b["since"], [{"k": "batch", "name": str(b["name"])[:40]}]))
+    # 3) pellet batches and the burner cleaned. A batch whose name is the batch in use (only case or spaces differ,
+    # batch_key) is no new batch: a delivery of the same pellets
+    use = None
+    for b in sorted((b for b in batches or [] if isinstance(b, dict) and isinstance(b.get("since"), (int, float))
+                     and isinstance(b.get("name"), str) and b["name"].strip()), key=lambda b: b["since"]):
+        if batch_key(b["name"]) != use:
+            use = batch_key(b["name"])
+            ev.append((b["since"], [{"k": "batch", "name": b["name"][:40]}]))
     if isinstance(cleaned_at, (int, float)) and not isinstance(cleaned_at, bool):
         cleaned_at = [{"t": cleaned_at, "parts": ["burner", "fan"]}]
     for m in cleaned_at or []:
@@ -2596,7 +2641,7 @@ def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
                     cl["what"] = [x for x in CLEAN_PARTS if x in cl["what"] or x in p["what"]]
                 elif p not in have:
                     have.append(p)
-            out[-1]["parts"] = [q for q in have if q["k"] != "cfg" or str(q["old"]) != str(q["new"])]
+            out[-1]["parts"] = [q for q in have if q["k"] != "cfg" or (q["new"] is not None and str(q["old"]) != str(q["new"]))]
         else:
             out.append({"t": round(t), "parts": parts})
     return [c for c in out if c["parts"]]
@@ -2605,13 +2650,21 @@ def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
 def _starts_side(starts, lo, hi, first):
     """The real lightings (no relights, no "went on burning") that ended as lit or failed, lo <= epoch < hi:
     the CH_MAX_N nearest to the change (first = after the change)."""
-    got = [r for r in starts if lo <= (r.get("epoch") or 0) < hi and not r.get("relight") and not resumed(r)
-           and r.get("result") in ("ok", "failed")]
+    got = [r for r in starts if lo <= (r.get("epoch") or 0) < hi and real_lighting(r) and r.get("result") in ("ok", "failed")]
     return got[:CH_MAX_N] if first else got[-CH_MAX_N:]
 
 
-def _day_of(epoch):
-    return datetime.date.fromtimestamp(epoch).isoformat()
+def _whole_days(days, lo, hi, start_h=0):
+    """The day summaries (or pellets days, start_h=6) that lie fully inside lo <= time < hi."""
+    out = []
+    for d in days:
+        try:
+            a = datetime.datetime.fromisoformat(d["day"]).replace(hour=start_h)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if lo <= a.timestamp() and (a + datetime.timedelta(days=1)).timestamp() <= hi:
+            out.append(d)
+    return out
 
 
 def _med(v, d=1):
@@ -2650,11 +2703,10 @@ def change_compare(ch, prev_t, next_t, starts, days, wx=None, now=None):
     fb, fa = sum(1 for r in b if r["result"] == "failed"), sum(1 for r in a if r["result"] == "failed")
     rows = [_row("flame", fl(b), fl(a)), _row("full", full(b), full(a), 0),
             {"k": "failed", "before": fb, "after": fa, "nb": len(b), "na": len(a), "v": ch_judge_rate(fb, len(b), fa, len(a))}]
-    # whole days on each side (the day of the change is left out): flame at full power, short burns
-    td = _day_of(t)
-    dlo, dhi = _day_of(lo), _day_of(hi - 1)
-    db = [d for d in days if dlo <= d.get("day", "") < td and (d.get("running_s") or 0) > 0]
-    da = [d for d in days if td < d.get("day", "") <= dhi and (d.get("running_s") or 0) > 0]
+    # whole days on each side, between the change times (the day of this change and of the changes next to it are
+    # left out): flame at full power, short burns
+    db = [d for d in _whole_days(days, lo, t) if (d.get("running_s") or 0) > 0]
+    da = [d for d in _whole_days(days, t, hi) if (d.get("running_s") or 0) > 0]
     def pf(ds):
         out = []
         for d in ds:
@@ -2667,7 +2719,7 @@ def change_compare(ch, prev_t, next_t, starts, days, wx=None, now=None):
     ra = [x for d in da for x in (d.get("runs") or []) if x is not None]
     sb, sa = short_burns(rb), short_burns(ra)
     rows.append({"k": "short", "before": sb, "after": sa, "nb": len(rb), "na": len(ra), "v": ch_judge_rate(sb, len(rb), sa, len(ra))})
-    rows.append(wx_row(wx, dlo, td, dhi))
+    rows.append(wx_row(wx, lo, t, hi))
     # a pellet batch change mixed in (with another change, or the batch differs inside the window): no verdict
     kinds = {p["k"] for p in ch["parts"]}
     names = {batch_key(r.get("batch")) for r in b + a if r.get("batch") not in (None, "—")}
@@ -2676,7 +2728,7 @@ def change_compare(ch, prev_t, next_t, starts, days, wx=None, now=None):
         for r in rows:
             if r["v"] != "learning":
                 r["v"] = "batch"
-    f = rows[0]
+    f, fr = rows[0], rows[2]
     if mixed:
         head = {"k": "batch"}
     elif f["na"] < CH_NEED:
@@ -2685,6 +2737,9 @@ def change_compare(ch, prev_t, next_t, starts, days, wx=None, now=None):
         head = {"k": "few_before", "n": f["nb"], "need": CH_NEED}
     else:
         head = {"k": f["v"], "d": round(abs(f["after"] - f["before"]), 1), "n": f["na"]}
+        # more starts did not light: never "Yes" - "mixed" when the flame comes sooner, else "failed" (worse)
+        if fr["v"] == "worse" and head["k"] != "worse":
+            head = dict(head, k="mixed" if head["k"] == "better" else "failed", a=fr["after"], na=fr["na"])
     dots = [[round(r["epoch"]), flame_min(r), 0] for r in b if lit(r)] + [[round(r["epoch"]), flame_min(r), 1] for r in a if lit(r)]
     return {"t": t, "parts": ch["parts"], "band": band, "left_out": out_n, "from": round(lo), "to": round(hi),
             "rows": rows, "head": head, "dots": dots, "enough": f["nb"] >= CH_NEED and f["na"] >= CH_NEED}
@@ -2707,8 +2762,10 @@ def change_help(starts, days, cfg_rows=(), batches=(), cleaned_at=None, wx=None,
 
 
 # ---- graph 2: pellets and the weather
-# One point per "pellets day" (06:00 to 06:00): kg from the fuel estimate (power x fuel rate, with the owner's
-# correction; not the silo counter, which counts in whole kg) against that day's average outside temperature.
+# One point per "pellets day" (06:00 to 06:00): kg as everywhere else on the page (day_fuel: the silo counter when it
+# moved, else power x fuel rate, with the owner's correction) against that day's average outside temperature. The
+# silo counter steps in whole kg, so it is not cut at 06:00 itself: each calendar day's power-based estimate is split
+# at 06:00 and scaled by that day's day_fuel / estimate (a day without an estimate is split by its burning time).
 # kg = base + slope x (WX_BASE_C - outside), and only base below WX_BASE_C: a house needs no heating above about
 # 16 °C (sun and people warm it the last degrees), so base = hot water and losses.
 WX_BASE_C = 16.0
@@ -2717,13 +2774,24 @@ WX_NEED = 14                   # the line shows with 14 such days on one heating
 WX_SPREAD = 6.0                # ... over at least 6 °C of outside temperature ...
 WX_R2 = 0.5                    # ... and the weather explains at least half of the day-to-day change (R²)
 WX_DAYS = 7                    # the forecast bars
+WX_BUY_N = 21                  # the weather's buy-by date replaces the flat one from 21 learned days ...
+WX_BUY_C = 2.0                 # ... and only when the forecast lies within the learned temperatures ±2 °C
 WX_PLAN_FIELDS = ("000", "005", "006", "007", "008")   # boiler set point and its own minimum mode: part of the plan
+
+
+def _part_kg(s, est, run_s):
+    """day_fuel for a part of one calendar day summary: its estimate share scaled by day_fuel / estimate, or (no
+    estimate that day) the burning-time share of day_fuel."""
+    tot_est, fuel = s.get("fuel_est_kg") or 0, day_fuel(s)
+    if tot_est > 0:
+        return est * fuel / tot_est
+    return fuel * run_s / s["running_s"] if (s.get("running_s") or 0) > 0 else 0.0
 
 
 def day_split(summaries):
     """Pellets days from the day summaries (oldest first): day D = 06:00 on D to 06:00 on D+1 = the part of D after
-    06:00 plus the part of D+1 before it. [{"day", "h" (hours recorded), "kg_est", "run_h"}]. A day needs the
-    next day's summary; summaries without the 06:00 split (older format) are skipped."""
+    06:00 plus the part of D+1 before it. [{"day", "h" (hours recorded), "kg" (day_fuel, see above), "kg_est",
+    "run_h"}]. A day needs the next day's summary; summaries without the 06:00 split (older format) are skipped."""
     by = {s.get("day"): s for s in summaries if isinstance(s, dict) and s.get("day") and isinstance(s.get("early"), dict)}
     out = []
     for d in sorted(by):
@@ -2733,8 +2801,10 @@ def day_split(summaries):
         s, n = by[d], by[nx]
         tot = sum(v or 0 for v in (s.get("state_s") or {}).values())
         late_s = tot - s["early"].get("s", 0)
-        out.append({"day": d, "h": round((late_s + n["early"].get("s", 0)) / 3600, 2),
-                    "kg_est": round((s.get("fuel_est_kg") or 0) - s["early"].get("kg", 0) + n["early"].get("kg", 0), 3),
+        late_est, late_run = (s.get("fuel_est_kg") or 0) - s["early"].get("kg", 0), (s.get("running_s") or 0) - s["early"].get("run_s", 0)
+        kg = _part_kg(s, late_est, late_run) + _part_kg(n, n["early"].get("kg", 0), n["early"].get("run_s", 0))
+        out.append({"day": d, "h": round((late_s + n["early"].get("s", 0)) / 3600, 2), "kg": round(max(0.0, kg), 3),
+                    "kg_est": round(late_est + n["early"].get("kg", 0), 3),
                     "run_h": round(((s.get("running_s") or 0) - s["early"].get("run_s", 0) + n["early"].get("run_s", 0)) / 3600, 2)})
     return out
 
@@ -2800,9 +2870,9 @@ def weather_fit(summaries, wdays, corr=1.0, plan_since=0, cfg_rows=(), flat=None
     for d in day_split(summaries):
         start = datetime.datetime.fromisoformat(d["day"] + "T06:00").timestamp()
         tmp = wx_temp(d["day"], wdays)
-        if d["h"] < WX_DAY_H or d["run_h"] <= 0 or tmp is None or start < since:
+        if d["h"] < WX_DAY_H or tmp is None or start < since:      # a whole day without burning counts (0 kg)
             continue
-        pts.append([d["day"], tmp, round(d["kg_est"] * corr, 2)])
+        pts.append([d["day"], tmp, round(d["kg"] * corr, 2)])
     pts = pts[-60:]
     temps = [p[1] for p in pts]
     spread = round(max(temps) - min(temps), 1) if temps else 0.0
@@ -2820,18 +2890,29 @@ def weather_fit(summaries, wdays, corr=1.0, plan_since=0, cfg_rows=(), flat=None
     if fit:
         out["r2"] = fit["r2"]
     if out["learned"]:
-        out.update(a=fit["a"], b=fit["b"], band=fit["rmse"], at0=round(wx_kg(fit, 0), 1), hot=round(max(0.0, fit["a"]), 1))
+        # the reference temperature: 0 °C when the learned days span it, else the nearest learned one (never a guess
+        # outside what was learned). at0 = the line there (the name stays from when it was always 0 °C)
+        lo, hi = min(temps), max(temps)
+        ref = 0 if lo <= 0 <= hi else math.ceil(lo) if lo > 0 else math.floor(hi)
+        out.update(a=fit["a"], b=fit["b"], band=fit["rmse"], ref_c=ref, at0=round(wx_kg(fit, ref), 1),
+                   hot=round(max(0.0, fit["a"]), 1), t_lo=lo, t_hi=hi, early=len(pts) < WX_BUY_N)
     return out
 
 
 def parse_forecast(j, today=None):
-    """Open-Meteo's daily answer (daily.time in unixtime, daily.temperature_2m_mean) -> [[day, °C], ...] from today."""
+    """Open-Meteo's daily answer (daily.time in unixtime, daily.temperature_2m_mean) -> [[day, °C], ...] from today.
+    A daily unixtime is local midnight of the place, sent in UTC: the day is taken with the answer's
+    utc_offset_seconds, so a Pi whose clock runs on UTC still names the days right."""
     d = (j or {}).get("daily") or {}
     today = today or datetime.date.today().isoformat()
+    try:
+        off = int((j or {}).get("utc_offset_seconds") or 0)
+    except (TypeError, ValueError):
+        off = 0
     out = []
     for t, c in zip(d.get("time") or [], d.get("temperature_2m_mean") or []):
         try:
-            day = datetime.date.fromtimestamp(int(t)).isoformat() if not isinstance(t, str) else t[:10]
+            day = (datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(t) + off)).date().isoformat()                 if not isinstance(t, str) else t[:10]
             c = float(c)
         except (TypeError, ValueError, OverflowError, OSError):
             continue
@@ -2852,8 +2933,12 @@ def wx_forecast(wx, forecast, stock=None, now=None):
     if not days:
         return wx
     wx["fc"] = days
+    wx["fc_n"] = len(days)                     # the forecast may hold fewer than WX_DAYS days: the pages say how many
     wx["fc_kg"] = round(sum(x[2] for x in days))
-    wx["fc_band"] = round(wx["band"] * math.sqrt(len(days)))
+    # the week's band: the day-to-day spread, wider (x1.5) while the line is young (under WX_BUY_N days)
+    wx["fc_band"] = round(wx["band"] * math.sqrt(len(days)) * (1.5 if wx.get("early") else 1))
+    # the buy-by date follows the weather only once the line is not young and the forecast is within what was learned
+    wx["fc_inside"] = all(wx["t_lo"] - WX_BUY_C <= x[1] <= wx["t_hi"] + WX_BUY_C for x in days) if "t_lo" in wx else False
     if stock and isinstance(stock.get("left"), (int, float)):
         rate = [x[2] for x in days]
         avg = statistics.mean(rate)
@@ -2883,18 +2968,23 @@ def wx_forecast(wx, forecast, stock=None, now=None):
     return wx
 
 
-def wx_row(wx, dlo, td, dhi):
-    """The last row of graph 1: kg a day against the learned line, before and after (days on the fit's own plan).
-    Values are "kg a day at 0 °C": the line at 0 °C plus the middle of how far the days were from the line."""
+def wx_row(wx, lo, t, hi):
+    """The last row of graph 1: kg a day against the learned line, before and after (pellets days fully between the
+    change times, on the fit's own plan). Values are "kg a day at ref_c": the line at the reference temperature
+    (0 °C, or the nearest learned one) plus the middle of how far the days were from the line."""
     if not wx or not wx.get("learned"):
         return {"k": "wx", "v": "learning", "n": (wx or {}).get("n", 0), "need": WX_NEED}
     fit = {"a": wx["a"], "b": wx["b"]}
-    at0 = wx_kg(fit, 0)
-    res = lambda lo, hi: [at0 + p[2] - wx_kg(fit, p[1]) for p in wx["pts"] if lo <= p[0] < hi]
-    b = res(dlo, td)
-    a = res((datetime.date.fromisoformat(td) + datetime.timedelta(days=1)).isoformat(),
-            (datetime.date.fromisoformat(dhi) + datetime.timedelta(days=1)).isoformat())
-    return _row("wx", b, a)
+    at = wx_kg(fit, wx.get("ref_c", 0))
+    pts = [{"day": p[0], "p": p} for p in wx["pts"]]
+    res = lambda a, b: [at + x["p"][2] - wx_kg(fit, x["p"][1]) for x in _whole_days(pts, a, b, 6)]
+    return dict(_row("wx", res(lo, t), res(t, hi)), ref_c=wx.get("ref_c", 0))
+
+
+def wx_use_buy(wx):
+    """True when the weather's buy-by date is to be used instead of the flat one (see WX_BUY_N, WX_BUY_C)."""
+    return bool(wx and wx.get("learned") and wx.get("n", 0) >= WX_BUY_N and wx.get("fc_inside")
+                and wx.get("buy_by") is not None)
 
 
 def phone_lines(change, wx, lang="en", now=None):
@@ -2909,10 +2999,10 @@ def phone_lines(change, wx, lang="en", now=None):
         h = c["head"]
         k = h["k"]
         txt = W["ch_" + k].format(d=f"{h.get('d', 0):.1f}".replace(".", "," if lang == "da" else "."),
-                                  n=h.get("n", 0), need=h.get("need", CH_NEED))
+                                  n=h.get("n", 0), need=h.get("need", CH_NEED), a=h.get("a", 0), na=h.get("na", 0))
         out.append(W["ch"].format(t=dm(c["t"]), x=txt))
     if wx and wx.get("learned") and wx.get("fc"):
-        s = W["fc"].format(kg=wx["fc_kg"])
+        s = W["fc"].format(kg=wx["fc_kg"], n=wx.get("fc_n", len(wx["fc"])))
         if wx.get("last_to"):
             s += " " + W["last"].format(t=dm(wx["last_to"]))
         out.append(s)
@@ -2924,12 +3014,16 @@ PHONE_WORDS = {
            "ch_worse": "flame {d} min later ({n} starts)", "ch_same": "no clear change in time to flame ({n} starts)",
            "ch_few": "too few starts to say ({n} of {need})", "ch_few_before": "too few starts before it to compare",
            "ch_batch": "the pellet batch changed too, so no verdict",
-           "fc": "Next 7 days: about {kg} kg.", "last": "Pellets last to about {t}."},
+           "ch_mixed": "flame {d} min sooner, but {a} of {na} starts did not light",
+           "ch_failed": "worse: {a} of {na} starts did not light",
+           "fc": "Next {n} days: about {kg} kg.", "last": "Pellets last to about {t}."},
     "da": {"ch": "Siden ændringen {t}: {x}", "ch_better": "flamme {d} min hurtigere ({n} starter)",
            "ch_worse": "flamme {d} min langsommere ({n} starter)", "ch_same": "ingen klar forskel i tid til flamme ({n} starter)",
            "ch_few": "for få starter til at sige noget ({n} af {need})", "ch_few_before": "for få starter før til at sammenligne",
            "ch_batch": "pillepartiet skiftede også, så ingen dom",
-           "fc": "De næste 7 dage: ca. {kg} kg.", "last": "Pillerne rækker til ca. {t}."}}
+           "ch_mixed": "flamme {d} min hurtigere, men {a} af {na} starter tændte ikke",
+           "ch_failed": "værre: {a} af {na} starter tændte ikke",
+           "fc": "De næste {n} dage: ca. {kg} kg.", "last": "Pillerne rækker til ca. {t}."}}
 
 
 # ============================================================================ hot-water tank (VVB) sensor
@@ -3207,7 +3301,6 @@ class WarmMode:
     No periods set -> the boost times (the boiler's BOOST 1/2 or own) act as "start" periods of start_window_min.
     Never acts on an ALARM or on stale data; max_attempts per start; the boiler's own WAITING is ended by stop->start."""
 
-    KINDS = ("keep", "start", "warmby")
     # "warm by": lead = lighting time + minutes per °C from the boiler temperature at RUNNING up to "warm".
     # The boiler already warms during the long lighting, so from a cold boiler the lighting time is most of the lead.
     IGN_MIN = 35          # minutes from start until RUNNING (cold firebox); learned
@@ -3272,7 +3365,7 @@ class WarmMode:
                 pass
         if not w.get("periods"):                       # no plan of our own: the boost times as start periods
             w["plan"] = [{"name": f"Start {b}", "start": b,
-                          "end": f"{(_mins(b) + w['start_window_min']) // 60 % 24:02d}:{(_mins(b) + w['start_window_min']) % 60:02d}",
+                          "end": f"{(hhmm_to_min(b) + w['start_window_min']) // 60 % 24:02d}:{(hhmm_to_min(b) + w['start_window_min']) % 60:02d}",
                           "days": list(range(7)), "kind": "start", "on": True} for b in w["boosts"]]
         else:
             w["plan"] = []
@@ -3282,7 +3375,7 @@ class WarmMode:
                 if p.get("kind") == "warmby":
                     # "warm by HH:MM": start early enough: learned lighting time + warm-up from the
                     # boiler temperature predicted for the start time
-                    t = _mins(p["start"])
+                    t = hhmm_to_min(p["start"])
                     _n = datetime.datetime.fromtimestamp(time.time())
                     _tg = datetime.datetime.combine(_n.date(), datetime.time(t // 60, t % 60))
                     if _tg.timestamp() < _n.timestamp() - 1800:
@@ -3358,7 +3451,7 @@ class WarmMode:
     def _active(p, dt):
         """Key of period p if it covers datetime dt (periods may cross midnight; days = start day), else None."""
         m = dt.hour * 60 + dt.minute
-        a, b = _mins(p["start"]), _mins(p["end"])
+        a, b = hhmm_to_min(p["start"]), hhmm_to_min(p["end"])
         days = p.get("days", list(range(7)))
         tag = p.get("target", p["start"])            # warm-by: the start moves with the boiler temperature, the key not
         if a < b:
@@ -3396,7 +3489,7 @@ class WarmMode:
         for p in w["plan"]:
             k = self._active(p, dt)
             if k:
-                since = (dt.hour * 60 + dt.minute - _mins(p["start"])) % 1440
+                since = (dt.hour * 60 + dt.minute - hhmm_to_min(p["start"])) % 1440
                 return k, p, since
         return None, None, None
 
@@ -3430,8 +3523,8 @@ class WarmMode:
             for p in w["plan"]:
                 if day.weekday() not in p.get("days", list(range(7))):
                     continue
-                a = day + datetime.timedelta(minutes=_mins(p["start"]))
-                b = day + datetime.timedelta(minutes=_mins(p["end"]))
+                a = day + datetime.timedelta(minutes=hhmm_to_min(p["start"]))
+                b = day + datetime.timedelta(minutes=hhmm_to_min(p["end"]))
                 if b <= a:
                     b += datetime.timedelta(days=1)
                 out.append({"a": a.timestamp(), "b": b.timestamp(), "name": p.get("name", ""), "kind": p["kind"],
@@ -3678,7 +3771,7 @@ class WarmMode:
         ws = [p for p in w.get("plan") or [] if p.get("warmby") and p.get("lead") is not None]
         if not ws:
             return self.lead_min(w)
-        return min(ws, key=lambda p: (_mins(p["target"]) - nm) % 1440)["lead"]
+        return min(ws, key=lambda p: (hhmm_to_min(p["target"]) - nm) % 1440)["lead"]
 
     def feed(self):
         w = self.cfg()
@@ -3687,7 +3780,7 @@ class WarmMode:
         return {"enabled": on, "status": self.status, "stop_pct": w["stop_pct"], "burn_stop": self.burn_stop, "burn_name": self.burn_name,
                 "stop_after_min": w["stop_after_min"], "min_run_min": self.MIN_RUN_MIN, "pause_h": w["pause_h"], "boosts": w["boosts"],
                 "periods": w.get("periods") or [], "keep_restart_c": w["keep_restart_c"],
-                "min_boiler_c": w.get("min_boiler_c", 0), "lead_now": self._next_warm_lead(w) if on else None, "pump_c": w.get("pump_c", 50),
+                "min_boiler_c": w.get("min_boiler_c", 0), "lead_now": self._next_warm_lead(w) if on else None,
                 "learned": len(w.get("warm_learn") or []),
                 "start_window_min": w["start_window_min"],
                 "source": w["source"], "use_board": bool(w.get("use_board")), "rest_since": self.rest_since,

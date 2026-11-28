@@ -12,8 +12,7 @@ import burner_common as C               # shared tables and file helpers
 import burner_features as F             # the start records (time to flame): the same steps as the live program
 DATA = os.path.join(HERE, "..", "data")
 OUT = os.path.join(DATA, "insights.json")      # in the data folder, so the cards survive a restart / update
-STATE = {0: ("Stopped", "Stoppet"), 1: ("Waiting", "Venter"), 2: ("Starting", "Opstart"), 3: ("Ignition", "Tænding"),
-         4: ("Running", "Drift"), 5: ("Pause", "Pause"), 6: ("Alarm", "Alarm"), 7: ("Fire rescue", "Redder ilden")}
+STATE = {k: (C.STATE_WORDS[k], C.STATE_WORDS_DA[k]) for k in C.STATE_WORDS}     # the shared state words (EN, DA)
 
 
 def load(prefix):
@@ -110,9 +109,9 @@ def start_records(rows):
 
 
 def flame_already_on(r):
-    """A start with a flame already there: it reached RUNNING with no lighting to time, or a relight whose
-    flame was on at once. Not an ignition, so neither a hit nor a miss."""
-    return (r.get("result") == "ok" and r.get("flame_s") is None) or (r.get("relight") and r.get("flame_s") == 0)
+    """Not a real lighting (F.real_lighting: a relight or a start that went on burning), or one that reached RUNNING
+    with no lighting to time. Neither a hit nor a miss."""
+    return not F.real_lighting(r) or (r.get("result") == "ok" and r.get("flame_s") is None)
 
 
 def idea_ignition_times(rows):
@@ -138,8 +137,8 @@ def idea_ignition_times(rows):
     if not shown:
         return None
     return card("ign_minutes", "Minutes to flame, each start", "Minutter til flamme, hver start",
-                txt_en + " Counted from when lighting begins until the flame is strong enough. Starts without a flame (stopped or failed) are left out of the chart; starts where the flame was already on are not counted. Measured from the readings, not from the boiler's own log.",
-                txt_da + " Regnet fra tændingen begynder til flammen er stærk nok. Starter uden flamme (stoppet eller mislykket) er udeladt af grafen; starter hvor flammen allerede var der tælles ikke med. Målt ud fra målingerne, ikke kedlens egen log.",
+                txt_en + " Counted from when lighting begins until the flame is strong enough. Starts without a flame (stopped or failed) are left out of the chart; relights and starts where the flame was already on are not counted. Measured from the readings, not from the boiler's own log.",
+                txt_da + " Regnet fra tændingen begynder til flammen er stærk nok. Starter uden flamme (stoppet eller mislykket) er udeladt af grafen; genoptændinger og starter hvor flammen allerede var der tælles ikke med. Målt ud fra målingerne, ikke kedlens egen log.",
                 {"type": "bar", "labels": [lb for lb, _ in shown],
                  "series": [{"name": {"en": "minutes to flame", "da": "minutter til flamme"}, "unit": "min",
                              "data": [p for _, p in shown]}]})
@@ -164,20 +163,6 @@ def idea_minimum_mode(rows):
                 "bruger: en lavere 'Stop ved' eller 'Max ydelse' i kedlens menu kan give længere, roligere perioder.",
                 {"type": "xy", "points": pts, "xlabel": {"en": "minutes waited", "da": "minutter ventet"},
                  "ylabel": {"en": "boiler °C", "da": "kedel °C"}})
-
-
-def idea_fields_decoded(rows):
-    return card("fields", "What the unknown data fields do (found from the data)",
-                "Hvad de ukendte datafelter gør (fundet ud fra data)",
-                "state2 = always the same as the state. analog3 = always 0 (unused input). phase_step = always 1, din1 = "
-                "always 0, din3 = always 1 (constant so far). ch3_status = goes to 1 the moment a start command from the "
-                "monitor arrives and back to 0 a few minutes into the ignition: very likely the board's 'start requested by the "
-                "module' flag. auger_on stays 1 the whole time while running, so it means 'feeding on', not each auger turn.",
-                "state2 = altid det samme som tilstanden. analog3 = altid 0 (ubrugt indgang). phase_step = altid 1, din1 = "
-                "altid 0, din3 = altid 1 (konstante indtil videre). ch3_status = går til 1 i det øjeblik en startkommando "
-                "fra monitoren kommer, og tilbage til 0 nogle minutter inde i tændingen: sandsynligvis kedlens 'start ønsket "
-                "af modulet'-flag. auger_on er 1 hele tiden under drift, så det betyder 'fødning slået til', ikke hver "
-                "sneglevending.")
 
 
 SUB = [  # derived sub-steps (NOT sent by the controller): (key, en, da)
@@ -456,23 +441,20 @@ def idea_pellets_per_period(rows, days=7):
         if prev is not None and prev.get("state") in RUN_ST:
             day = datetime.date.fromtimestamp(prev["epoch"]).isoformat()
             dt = min(r["epoch"] - prev["epoch"], 60.0)
-            a, b = prev.get("silo_kg"), r.get("silo_kg")
-            if a is not None and b is not None and 0 < a - b < 5:
-                silo[day][cur] += a - b
-            p, g = prev.get("power_pct"), prev.get("fuel_gph")
-            if prev.get("state") == 4 and p and g:
-                est[day][cur] += p / 100 * g / 1000 * dt / 3600
+            silo[day][cur] += F.silo_step(prev, r)            # the same per-row fuel as the day summaries
+            est[day][cur] += F.row_fuel_kg(prev, dt)
         prev = r
     today = datetime.date.today().isoformat()
-    # whole days only (the PC recorded 20 h or more), and the counter's 1-kg steps spread by the power-based shares
-    dlist = sorted(d for d in set(silo) | set(est) if d != today and cover[d] >= 20 * 3600)[-days:]
+    # whole days only (recorded F.WHOLE_DAY_H hours or more, as "per day"), the counter's 1-kg steps spread by the
+    # power-based shares, and the owner's correction from counting the pellets (as the pellet stock)
+    dlist = sorted(d for d in set(silo) | set(est) if d != today and cover[d] >= F.WHOLE_DAY_H * 3600)[-days:]
     if len(dlist) < 1:
         return None
-    use = {}
+    use, corr = {}, F.correction_of(_settings())
     for d in dlist:
         e, kg = est[d], sum(silo[d].values())
         es = sum(e.values())
-        use[d] = {n: v / es * kg for n, v in e.items()} if kg > 0 and es > 0 else dict(e)
+        use[d] = {n: v / es * kg * corr for n, v in e.items()} if kg > 0 and es > 0 else {n: v * corr for n, v in e.items()}
     names = [p["name"] for p in periods] + [None]
     tot = {n: sum(use[d].get(n, 0) for d in dlist) for n in names}
     names = [n for n in names if tot[n] > 0.05]
@@ -586,7 +568,6 @@ def idea_cooling_vs_outside(rows, room_c=18.0):
 
 
 IDEAS = [idea_start_substeps, idea_warm_by, idea_pellets_per_period, idea_power_levels, idea_cooling_vs_outside, idea_burn_vs_start, idea_cooling, idea_time_per_state, idea_ignition_times, idea_minimum_mode]
-# idea_fields_decoded (raw field names) is developer notes, not for the owner's Discoveries page; kept for reference.
 
 
 def main():

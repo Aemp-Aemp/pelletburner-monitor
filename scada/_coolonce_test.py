@@ -100,7 +100,7 @@ class M:
     latest_cfg = {"fields": {"setpoint_c": 65}}
 wm = F.WarmMode.__new__(F.WarmMode)
 wm.mod = M()
-base = {"pump_c": 50, "warm_k1": 0.82, "warm_k2": 1.46, "warm_learn": []}
+base = {"warm_learn": []}
 now = at(3, "21:00")
 target = at(4, "06:30")
 nights = good + [copies[0]]                       # what a run without restarts would have stored

@@ -104,10 +104,7 @@ codes = set(re.findall(r'self\._set\("(\w+)"', part("WarmMode")))
 check("warm mode status codes found", {"keep", "keep_wait", "resting", "low"} <= codes, str(codes))
 for c in sorted(codes):
     check(f"dashboard.html: warm mode status '{c}' in EN and DA", both("dashboard.html", "wm_st_" + c))
-codes = set(re.findall(r'self\._set\("(\w+)"', part("Scheduler")))
-check("start window status codes found", {"running", "cooldown", "blocked"} <= codes, str(codes))
-for c in sorted(codes):
-    check(f"dashboard.html: start window status '{c}' in EN and DA", both("dashboard.html", "st_" + c))
+# (the start window status card is gone from /classic, so its st_<code> texts are too)
 
 print("ALL PASS" if not FAILED else f"{FAILED} FAILED")
 sys.exit(1 if FAILED else 0)

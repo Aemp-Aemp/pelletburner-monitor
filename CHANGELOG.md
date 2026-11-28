@@ -4,6 +4,22 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.11
+
+### Better
+- "Did the change help?" needs 8 starts on each side and a clear difference before it says better or worse, so it is rarely fooled by chance. If the flame came sooner but more starts failed, it says "mixed". Pellet batch names that differ only in capitals count as one batch.
+- "Pellets and the weather" uses the same kg as the rest of the page, counts days without burning, says "roughly" while it is young, and only takes over the "Buy before" date after 21 learned days and inside the temperatures it has seen.
+- One rule for a real lighting everywhere (no relights, no starts that went on burning).
+- Burner health gives the same verdict on the page, in Home Assistant and in the phone alert; it says "Still learning" instead of "All good" while rows are learning.
+- "Picture for service" uses the right factory values for your software.
+- Discoveries use the same state names and the same pellet numbers as the rest of the page.
+
+### Fixed
+- Danish dates no longer end with two full stops.
+- Phone: "Flame and fan by power" shows hours; the Today chart labels no longer run into the "now" line; the /classic tabs wrap instead of hiding.
+- "1 emptying(s)" reads "1 emptying".
+- Removed the unused "pump start" setting and other leftovers.
+
 ## 1.0.10
 
 ### New

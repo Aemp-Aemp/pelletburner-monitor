@@ -152,7 +152,9 @@ mod.ignitions.records = [{"epoch": tn + i * 3600, "result": "ok", "flame_s": 270
 days7 = [{"day": f"2000-01-0{i}", "runs": [90.0, 20.0], "running_s": 7200} for i in range(1, 4)]
 mod.fan = types.SimpleNamespace(analyse=lambda: {"levels": [{"change_pct": -2.0, "n": 20}, {"change_pct": 1.0, "n": 15}, {"change_pct": None, "n": 4}]})
 mod.ash = types.SimpleNamespace(feed=lambda: {"turn_hist": [[i, 6.0] for i in range(12)], "problem": None})
-hh = F.Optimiser(Settings({}), None, mod, log).health(days=days7)
+o7 = F.Optimiser(Settings({}), None, mod, log)
+o7.report_days = lambda: days7                     # health takes its own days (report_days)
+hh = o7.health()
 ch, tf7 = hh["checks"], next(i for i in hh["items"] if i["key"] == "to_flame")
 check("checklist: the six checks, in order", [c["k"] for c in ch] == ["light", "flame", "fan", "ash", "short", "rescue"])
 check("checklist: time to flame shows the judged value (last 3 starts), not only the newest",

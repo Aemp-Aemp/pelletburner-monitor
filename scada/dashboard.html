@@ -88,9 +88,8 @@
   .log .e.alarm .ms{color:#ffb3ae} .log .e.state .ms{color:var(--set)}
   .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch} .tshint{margin-top:4px}
   /* tabs */
-  .tabs{display:flex;gap:4px;margin-top:12px;border-bottom:1px solid var(--edge);overflow-x:auto;scrollbar-width:none}
-  .tabs::-webkit-scrollbar{display:none}
-  .tabs .tab{flex:none;white-space:nowrap}   /* phones: the tab bar scrolls sideways instead of widening the page */
+  .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px;border-bottom:1px solid var(--edge)}
+  .tabs .tab{flex:none;white-space:nowrap}   /* phones: the tabs wrap onto a second line, so none is hidden */
   .tab{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;
     padding:9px 16px;color:var(--dim);font-weight:600;font-size:13.5px}
   .tab.on{color:var(--ink);border-bottom-color:var(--accent)}
@@ -144,7 +143,6 @@
   .schfs:disabled{opacity:.42}
   .schfs:disabled *{cursor:not-allowed}
   button.primary{background:var(--accent);color:#06281f;border-color:var(--accent);font-weight:700}
-  button.danger{border-color:var(--bad);color:#ffb3ae}
   button:disabled{opacity:.5;cursor:not-allowed}
   .savemsg{font-size:12.5px;color:var(--dim)}
   .savemsg.ok{color:var(--ok)} .savemsg.bad{color:var(--bad)}
@@ -155,13 +153,10 @@
   .form label{display:flex;align-items:center;gap:8px;font-size:13px}
   .form label>span:first-child{flex:1;color:var(--dim)}
   .form label.chk>span{flex:1;color:var(--ink)}
-  @media (max-width:560px){ .form label.wrapl{flex-wrap:wrap} .form label.wrapl>span:first-child{flex-basis:100%} }   /* phones: long label above its field */
   .form i{color:var(--faint);font-style:normal;width:22px}
-  .win{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--panel2)}
   .days{display:inline-flex;border:1px solid var(--edge);border-radius:7px;overflow:hidden}
   .days button{border:0;border-radius:0;padding:5px 7px;font-size:12px;color:var(--faint);background:var(--panel2);min-width:30px}
   .days button.on{background:rgba(57,208,216,.22);color:var(--ink)}
-  .win .x{margin-left:auto}
   .sw-toggle{position:relative;display:inline-block;width:46px;height:26px;flex:none}
   .sw-toggle input{opacity:0;width:0;height:0}
   .sw-toggle span{position:absolute;inset:0;background:var(--panel2);border:1px solid var(--edge);border-radius:13px;cursor:pointer;transition:.2s}
@@ -359,7 +354,6 @@
           <label><span id="t_wm_boosts"></span><input type="text" id="wmBoosts" placeholder="05:00, 17:00" style="width:140px"></label>
           <label><span id="t_wm_minc"></span><input type="number" id="wmMinC" min="0" max="60"> <i id="wmMinCu">°C</i></label>
           <label><span id="t_wm_restart"></span><input type="number" id="wmRestart" min="1" max="30"> <i>°C</i></label>
-          <label><span id="t_wm_pump"></span><input type="number" id="wmPump" min="30" max="80"> <i>°C</i></label>
         </div>
         <div id="wmPeriods" style="margin-top:10px"></div>
         <div class="note" id="t_wm_note"></div>
@@ -567,6 +561,25 @@ const axisDec=st=>st<0.1?2:(Math.abs(st-Math.round(st))>1e-9?1:0);
 const api=(path,body)=>fetch(path, body===undefined?{cache:"no-cache"}:
   {method:"POST",headers:{"Content-Type":"application/json","X-Burner":"1"},body:JSON.stringify(body)})
   .then(r=>r.json().then(j=>({ok:r.ok,j})));
+// a day and month, "28 Nov" / "28. nov" (Danish without the month's own full stop, so a sentence that ends with a
+// date gets one full stop); "—" when there is none
+const dmon=ep=>ep?new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"}).replace(/\.$/,""):"—";
+// a chart's width: the element's own, at least 260 px (def = before it is laid out)
+const grW=(el,def)=>Math.max(260,Math.round((el&&el.clientWidth)||def||600));
+// a typed number: plain digits with one . or , only (not "0x10", "1e3", "+5"); anything else -> NaN
+const numTyped=s=>{ s=String(s==null?"":s).trim().replace(",","."); return /^-?\d+(\.\d+)?$/.test(s)?Number(s):NaN; };
+// why a poll got no data: this device offline / no reply at all (network error, timeout) / the monitor answered with an error
+const noAnswerKey=e=>navigator.onLine===false?"nodata_net":(e&&e.name&&e.name!=="SyntaxError")?"nodata_noreply":"nodata_resp";
+// who / what started or stopped it: the event's `source` in the server's words. src = labels.sources of /status.json
+const srcText=(e,src)=>{ if(!e||!e.source) return ""; const w=c=>{ const x=(src||{})[c]; return x?(x[LANG]||x.en||""):""; }, s=w(e.source);
+  return s&&e.after_alarm?s+", "+w("after_alarm"):s; };
+// "Started by: heating plan" / "Stopped by: ..." (tt = the page's text function)
+const srcLine=(e,src,tt)=>{ const s=srcText(e,src); if(!s) return ""; const to=+e.to, fr=+e.from;
+  return (to===2||to===3)?tt("started_by")+": "+s:(fr!==6&&(to===0||to===1||to===5))?tt("stopped_by")+": "+s:(fr===6&&to===0)?tt("reset_by")+": "+s:s; };
+// the source of a command ("warm mode (low power)", "web", "phone start" ...) in the page's words: the same prefixes
+// as burner_ext.source_of, anything else is a remote command
+const CMD_SRC=[["warm","plan"],["schedule","schedule"],["auto_reset","auto_reset"],["mqtt","mqtt"],["web","web"],["phone","phone"]];
+const cmdSrc=(s,src)=>{ s=String(s||""); const k=CMD_SRC.find(p=>s.startsWith(p[0])); return srcText({source:k?k[1]:"remote"},src)||s; };
 
 // ---- Lighting help ("Trouble lighting?"), the same card on both pages. READ ONLY: it shows what the server worked
 // out from the settings the boiler sent and from the start records (api/ignitions "help"). It never sends anything.
@@ -785,7 +798,7 @@ const rsOutcome=o=>bhT("rs_"+(o||"null"));
 function rescText(p){
   const last=(p&&p.last)||[], n=(p&&p.n)||0;
   if(n===1&&last.length) return bhT("rs_one",{w:bhWhen(last[0][0]),o:rsOutcome(last[0][1])})+" "+bhT("rs_advice");
-  const from=p&&p.from?new Date(p.from+"T12:00").toLocaleDateString(LOC(),{day:"numeric",month:"short"}):"—";
+  const from=p&&p.from?dmon(new Date(p.from+"T12:00").getTime()/1000):"—";
   return bhT("rs_many",{n,d:(p&&p.days)||"?",from})+" "+last.map(x=>bhWhen(x[0])+" ("+rsOutcome(x[1])+")").join("; ")+". "+bhT("rs_advice");
 }
 // the list of times for the Burner health detail. c = the page's colours {warn, dim, line}
@@ -968,6 +981,7 @@ const GR_TXT={
  en:{ch_h:"Did the change help?", ch_sub:"Each dot is one lighting · the same boiler, before and after",
   ch_better:"Yes: the flame now comes {d} min sooner", ch_worse:"No: the flame now comes {d} min later",
   ch_same:"No clear change in time to flame", ch_few:"Too few starts since the change to say ({n} of {need})",
+  ch_mixed:"Mixed: the flame comes {d} min sooner, but {a} of {na} starts did not light", ch_failed:"Worse: {a} of {na} starts did not light",
   ch_few_before:"Too few starts before the change to compare", ch_batch:"The pellet batch changed too, so it cannot say",
   ch_what:"Changed {d}: {p}.", ch_n:"{b} starts before, {a} after.", ch_many:"Several things changed at once: the graph cannot tell which one did it.",
   ch_batch_note:"A new pellet batch lights differently, so a settings change cannot be judged across it.",
@@ -976,23 +990,24 @@ const GR_TXT={
   ch_ax:"minutes to flame", ch_mark:"changed", ch_usual:"usual {a} min",
   c_m:"", c_b:"Before", c_a:"After", c_v:"Verdict",
   r_flame:"Time to flame", r_full:"Time to full heat", r_failed:"Starts that did not light", r_power_flame:"Flame at full power",
-  r_short:"Short burns (under 30 min)", r_wx:"Pellets against the weather", of:"{a} of {n}", u_wx:"{a} kg at 0 °C",
+  r_short:"Short burns (under 30 min)", r_wx:"Pellets against the weather", of:"{a} of {n}", u_wx:"{a} kg at {t} °C",
   v_better:"better", v_worse:"worse", v_same:"the same", v_few:"too few to say", v_batch:"no verdict (new pellets)",
   v_learning:"learning: {n} of {need} days",
-  ch_how:"Better or worse only with at least {need} starts (or days) on each side, when the middle halves of the two sides do not overlap. Medians, so one odd start does not decide it.",
+  ch_how:"Better or worse only with at least {need} starts (or days) on each side, when the middle halves of the two sides do not overlap. Medians, so one odd start does not decide it. Starts that did not light and short burns: at least 30 points apart and 3 more.",
   wx_h:"Pellets and the weather", wx_sub:"Each dot is one full day (06:00 to 06:00) · the line is your house",
   wx_learn:"Learning: {n} of {need} days", wx_spread:"Learning: the days so far had too alike weather ({s} °C apart, needs {need} °C).",
   wx_fit:"Learning: the days do not follow the weather clearly enough yet.", wx_flat:"Until then: about {a} kg a day on average.",
   wx_off:"Needs the outside temperature: Settings → Outside temperature.",
   wx_learn_how:"A day counts with at least 23 h recorded and some burning. A heating plan change starts again.",
-  wx_next:"Next 7 days: about {a} kg", wx_last:"Pellets at home last to about {d}.", wx_buy:"Buy by {d}.",
-  wx_at0:"At 0 °C about {a} kg a day", wx_yday:"yesterday",
+  wx_next:"Next {n} days: about {a} kg", wx_next_r:"Next {n} days: roughly {a} kg", wx_last:"Pellets at home last to about {d}.", wx_buy:"Buy by {d}.",
+  wx_at0:"At {t} °C about {a} kg a day", wx_yday:"yesterday", wx_young:"Still a young line: the buy-by date uses the plain average until {n} days are learned.",
   wx_ax_x:"outside, average of the day", wx_ax_y:"kg a day", wx_week:"The coming week",
   wx_week_note:"kg a day from the weather forecast · ±{a} kg over the week", wx_nofc:"No weather forecast yet.",
   wx_foot:"Learned from {n} days. Most days are within ±{b} kg of the line. Sun, wind and hot water use move single days."},
  da:{ch_h:"Hjalp ændringen?", ch_sub:"Hver prik er én optænding · samme kedel, før og efter",
   ch_better:"Ja: flammen kommer nu {d} min hurtigere", ch_worse:"Nej: flammen kommer nu {d} min senere",
   ch_same:"Ingen klar forskel i tid til flamme", ch_few:"For få starter siden ændringen til at sige noget ({n} af {need})",
+  ch_mixed:"Blandet: flammen kommer {d} min hurtigere, men {a} af {na} starter tændte ikke", ch_failed:"Værre: {a} af {na} starter tændte ikke",
   ch_few_before:"For få starter før ændringen til at sammenligne", ch_batch:"Pillepartiet skiftede også, så det kan ikke siges",
   ch_what:"Ændret {d}: {p}.", ch_n:"{b} starter før, {a} efter.", ch_many:"Flere ting blev ændret på én gang: grafen kan ikke sige, hvilken der gjorde det.",
   ch_batch_note:"Et nyt pilleparti tænder anderledes, så en ændret indstilling kan ikke bedømmes hen over det.",
@@ -1001,23 +1016,21 @@ const GR_TXT={
   ch_ax:"minutter til flamme", ch_mark:"ændret", ch_usual:"normalt {a} min",
   c_m:"", c_b:"Før", c_a:"Efter", c_v:"Dom",
   r_flame:"Tid til flamme", r_full:"Tid til fuld varme", r_failed:"Starter, der ikke tændte", r_power_flame:"Flamme ved fuld ydelse",
-  r_short:"Korte fyringer (under 30 min)", r_wx:"Piller i forhold til vejret", of:"{a} af {n}", u_wx:"{a} kg ved 0 °C",
+  r_short:"Korte fyringer (under 30 min)", r_wx:"Piller i forhold til vejret", of:"{a} af {n}", u_wx:"{a} kg ved {t} °C",
   v_better:"bedre", v_worse:"værre", v_same:"det samme", v_few:"for få til at sige", v_batch:"ingen dom (nye piller)",
   v_learning:"lærer: {n} af {need} dage",
-  ch_how:"Bedre eller værre kun med mindst {need} starter (eller dage) på hver side, når de midterste halvdele af de to sider ikke overlapper. Medianer, så én skæv start ikke afgør det.",
+  ch_how:"Bedre eller værre kun med mindst {need} starter (eller dage) på hver side, når de midterste halvdele af de to sider ikke overlapper. Medianer, så én skæv start ikke afgør det. Starter, der ikke tændte, og korte fyringer: mindst 30 procentpoint og 3 flere.",
   wx_h:"Piller og vejret", wx_sub:"Hver prik er ét helt døgn (06:00 til 06:00) · linjen er dit hus",
   wx_learn:"Lærer: {n} af {need} dage", wx_spread:"Lærer: dagene indtil nu havde for ens vejr ({s} °C imellem, skal være {need} °C).",
   wx_fit:"Lærer: dagene følger endnu ikke vejret tydeligt nok.", wx_flat:"Indtil da: ca. {a} kg om dagen i snit.",
   wx_off:"Kræver udetemperaturen: Indstillinger → Udetemperatur.",
   wx_learn_how:"Et døgn tæller med mindst 23 timers målinger og noget fyring. En ændret varmeplan starter forfra.",
-  wx_next:"De næste 7 dage: ca. {a} kg", wx_last:"Pillerne derhjemme rækker til ca. {d}.", wx_buy:"Køb senest {d}.",
-  wx_at0:"Ved 0 °C ca. {a} kg om dagen", wx_yday:"i går",
+  wx_next:"De næste {n} dage: ca. {a} kg", wx_next_r:"De næste {n} dage: omkring {a} kg", wx_last:"Pillerne derhjemme rækker til ca. {d}.", wx_buy:"Køb senest {d}.",
+  wx_at0:"Ved {t} °C ca. {a} kg om dagen", wx_yday:"i går", wx_young:"Linjen er stadig ung: købsdatoen bruger det almindelige gennemsnit, til {n} dage er lært.",
   wx_ax_x:"ude, døgnets gennemsnit", wx_ax_y:"kg om dagen", wx_week:"Den kommende uge",
   wx_week_note:"kg om dagen ud fra vejrudsigten · ±{a} kg over ugen", wx_nofc:"Ingen vejrudsigt endnu.",
   wx_foot:"Lært af {n} dage. De fleste dage ligger inden for ±{b} kg af linjen. Sol, vind og varmt vand flytter enkelte dage."}};
 const grT=(k,p)=>{ let s=(GR_TXT[LANG]||GR_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
-const grDay=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"});
-const grW=el=>Math.max(260,Math.round((el&&el.clientWidth)||600));
 // a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”", "Cleaned: burner, fan"
 const clParts=w=>(w||[]).map(x=>grT("cl_"+x)).join(", ");
 const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name})
@@ -1030,12 +1043,12 @@ function chDraw(el,ch,wx,c){
   if(!L.length){ el.innerHTML=""; return; }
   let i=L.findIndex(x=>x.t===CH_PICK); if(i<0) i=ch.pick||0;
   const C=L[i], h=C.head||{}, nb=C.rows[0].nb, na=C.rows[0].na;
-  const tone=h.k==="better"?[c.okBg,c.ok]:h.k==="worse"?[c.warnBg,c.warn]:[c.nBg,c.ink];
+  const tone=h.k==="better"?[c.okBg,c.ok]:h.k==="worse"||h.k==="mixed"||h.k==="failed"?[c.warnBg,c.warn]:[c.nBg,c.ink];
   const many=(C.parts||[]).length>1;
   const pick=L.length>1?`<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;color:${c.dim}">${esc(grT("ch_pick"))}
-    <select data-chpick style="font:inherit;font-size:14px;max-width:100%;min-width:0;flex:1 1 auto;padding:6px 8px;border-radius:10px;border:1px solid ${c.grid};background:${c.card};color:${c.ink}">${L.map((x,k)=>`<option value="${x.t}"${k===i?" selected":""}>${esc(grDay(x.t)+": "+chParts(x))}</option>`).join("")}</select></label>`:"";
+    <select data-chpick style="font:inherit;font-size:14px;max-width:100%;min-width:0;flex:1 1 auto;padding:6px 8px;border-radius:10px;border:1px solid ${c.grid};background:${c.card};color:${c.ink}">${L.map((x,k)=>`<option value="${x.t}"${k===i?" selected":""}>${esc(dmon(x.t)+": "+chParts(x))}</option>`).join("")}</select></label>`:"";
   const val=r=>{ if(r.k==="failed"||r.k==="short") return [grT("of",{a:r.before,n:r.nb}),grT("of",{a:r.after,n:r.na})];
-    if(r.k==="wx") return r.v==="learning"?["–","–"]:[r.before!=null?grT("u_wx",{a:fmt(r.before,1)}):"–",r.after!=null?grT("u_wx",{a:fmt(r.after,1)}):"–"];
+    if(r.k==="wx") return r.v==="learning"?["–","–"]:[r.before!=null?grT("u_wx",{a:fmt(r.before,1),t:r.ref_c||0}):"–",r.after!=null?grT("u_wx",{a:fmt(r.after,1),t:r.ref_c||0}):"–"];
     const u=r.k==="power_flame"?"":" min", d=r.k==="flame"?1:0; return [r.before!=null?fmt(r.before,d)+u:"–",r.after!=null?fmt(r.after,d)+u:"–"]; };
   const vcol={better:c.ok,worse:c.warn}, td=`padding:6px 8px 6px 0;border-top:1px solid ${c.grid};text-align:left;vertical-align:top`;
   const rows=C.rows.map(r=>{ const [b,a]=val(r), vt=r.v==="learning"?grT("v_learning",{n:r.n,need:r.need}):grT("v_"+r.v);
@@ -1045,11 +1058,11 @@ function chDraw(el,ch,wx,c){
     return `<div class="chRow" data-k="${r.k}" data-v="${r.v}" style="padding:7px 0;border-top:1px solid ${c.grid}"><b style="font-weight:600">${esc(grT("r_"+r.k))}</b><br>
       <span style="color:${c.dim}">${esc(grT("c_b"))}</span> ${esc(b)} <span style="color:${c.dim}">→ ${esc(grT("c_a"))}</span> <b>${esc(a)}</b> · <span style="color:${vcol[r.v]||c.dim}">${esc(vt)}</span></div>`; }).join("");
   el.innerHTML=`${c.head(grT("ch_h"),grT("ch_sub"))}${pick}
-    <div id="chHead" data-k="${esc(h.k)}" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${tone[0]}"><div style="font-size:17px;font-weight:650;color:${tone[1]}">${esc(grT("ch_"+h.k,{d:fmt(h.d,1),n:h.n,need:h.need}))}</div>
-      <div style="margin-top:4px;font-size:14px">${esc(grT("ch_what",{d:grDay(C.t),p:chParts(C)})+" "+grT("ch_n",{b:nb,a:na}))}${many?" "+esc(grT("ch_many")):""}${h.k==="batch"?" "+esc(grT("ch_batch_note")):""}</div></div>
+    <div id="chHead" data-k="${esc(h.k)}" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${tone[0]}"><div style="font-size:17px;font-weight:650;color:${tone[1]}">${esc(grT("ch_"+h.k,{d:fmt(h.d,1),n:h.n,need:h.need,a:h.a,na:h.na}))}</div>
+      <div style="margin-top:4px;font-size:14px">${esc(grT("ch_what",{d:dmon(C.t),p:chParts(C)})+" "+grT("ch_n",{b:nb,a:na}))}${many?" "+esc(grT("ch_many")):""}${h.k==="batch"?" "+esc(grT("ch_batch_note")):""}</div></div>
     <div id="chStrip" style="margin-top:12px"></div>
     ${narrow?`<div style="margin-top:8px;font-size:14px">${rowsN}</div>`:`<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px"><tr>${["c_m","c_b","c_a","c_v"].map(k=>`<th style="${td};border-top:0;color:${c.dim};font-weight:600">${esc(grT(k))}</th>`).join("")}</tr>${rows}</table>`}
-    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${C.band?esc(grT("ch_band",{a:fmt(C.band[0],0),b:fmt(C.band[1],0),n:C.left_out}))+" ":""}${esc(grT("ch_how",{need:ch.need||5}))}</p>`;
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${C.band?esc(grT("ch_band",{a:fmt(C.band[0],0),b:fmt(C.band[1],0),n:C.left_out}))+" ":""}${esc(grT("ch_how",{need:ch.need||8}))}</p>`;
   chStrip(el.querySelector("#chStrip"),C,c);
 }
 // the dot strip: minutes to flame over time, grey before and orange after the dashed line, the middle half as a band
@@ -1065,10 +1078,10 @@ function chStrip(el,C,c){
     if(med!=null) s+=`<line x1="${xa.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${Y(med).toFixed(1)}" y2="${Y(med).toFixed(1)}" style="stroke:${col}" stroke-width="2.5"/>`; };
   side(fr.qb,fr.before,t0,C.t,c.before); side(fr.qa,fr.after,C.t,t1,c.after);
   s+=`<line x1="${xm.toFixed(1)}" x2="${xm.toFixed(1)}" y1="${y0-10}" y2="${y1}" style="stroke:${c.ink}" stroke-dasharray="4 4"/><text x="${(xm+(xm>x1-70?-4:4)).toFixed(1)}" y="${y0-12}" font-size="11" font-weight="650" style="fill:${c.ink}"${xm>x1-70?' text-anchor="end"':""}>${esc(grT("ch_mark"))}</text>`;
-  D.forEach(d=>{ s+=`<circle class="chDot" cx="${X(d[0]).toFixed(1)}" cy="${Y(d[1]).toFixed(1)}" r="4.5" style="fill:${d[2]?c.after:c.before};stroke:${c.card}" stroke-width="1.2"><title>${esc(grDay(d[0])+" "+clock(d[0])+" · "+fmt(d[1],1)+" min")}</title></circle>`; });
+  D.forEach(d=>{ s+=`<circle class="chDot" cx="${X(d[0]).toFixed(1)}" cy="${Y(d[1]).toFixed(1)}" r="4.5" style="fill:${d[2]?c.after:c.before};stroke:${c.card}" stroke-width="1.2"><title>${esc(dmon(d[0])+" "+clock(d[0])+" · "+fmt(d[1],1)+" min")}</title></circle>`; });
   if(fr.before!=null) s+=`<text x="${x0+4}" y="${(Y(fr.before)-9).toFixed(1)}" font-size="11" style="fill:${c.dim}">${esc(grT("ch_usual",{a:fmt(fr.before,1)}))}</text>`;
   if(fr.after!=null) s+=`<text x="${x1}" y="${(Y(fr.after)+17).toFixed(1)}" text-anchor="end" font-size="11" font-weight="650" style="fill:${c.after}">${esc(grT("ch_usual",{a:fmt(fr.after,1)}))}</text>`;
-  s+=`<text x="${x0}" y="${H-10}" font-size="11" style="fill:${c.dim}">${esc(grDay(t0))}</text><text x="${x1}" y="${H-10}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(grDay(t1))}</text>`;
+  s+=`<text x="${x0}" y="${H-10}" font-size="11" style="fill:${c.dim}">${esc(dmon(t0))}</text><text x="${x1}" y="${H-10}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(dmon(t1))}</text>`;
   s+=`<text x="0" y="10" font-size="11" style="fill:${c.dim}">${esc(grT("ch_ax"))}</text>`;
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%" role="img" aria-label="${esc(grT("ch_h"))}">${s}</svg>`;
 }
@@ -1088,30 +1101,37 @@ function pwDraw(el,wx,stock,c,on){
       ${why?`<p style="margin:6px 0 0">${esc(why)}</p>`:""}${wx.flat!=null?`<p style="margin:6px 0 0">${esc(grT("wx_flat",{a:fmt(wx.flat,1)}))}</p>`:""}
       <p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(on===false&&!wx.n?grT("wx_off"):grT("wx_learn_how"))}</p>`;
     return; }
-  const fc=wx.fc||[], last=stock&&wx.last_to?grT("wx_last",{d:grDay(wx.last_to)}):"", buy=stock&&stock.buy_by_src==="weather"&&stock.buy_by?grT("wx_buy",{d:grDay(stock.buy_by)}):"";
-  const big=fc.length?grT("wx_next",{a:fmt(wx.fc_kg,0)}):grT("wx_at0",{a:fmt(wx.at0,1)});
-  el.innerHTML=`${head}<div id="wxTop" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${c.accBg}"><div style="font-size:17px;font-weight:650;color:${c.acc}">${esc(big)}</div>${last||buy?`<div style="margin-top:4px;font-size:14px">${esc((last+" "+buy).trim())}</div>`:""}</div>
+  // one buy-by date: the weather's dates only when the pellet card uses them too (stock.buy_by_src, the server decides)
+  const useWx=!!(stock&&stock.buy_by_src==="weather"&&stock.buy_by), fc=wx.fc||[];
+  const last=useWx&&wx.last_to?grT("wx_last",{d:dmon(wx.last_to)}):"", buy=useWx?grT("wx_buy",{d:dmon(stock.buy_by)}):"";
+  const young=stock&&stock.buy_by&&!useWx&&wx.n<21?grT("wx_young",{n:21}):"";
+  const big=fc.length?grT(wx.early?"wx_next_r":"wx_next",{a:fmt(wx.fc_kg,0),n:wx.fc_n||fc.length}):grT("wx_at0",{a:fmt(wx.at0,1),t:wx.ref_c||0});
+  el.innerHTML=`${head}<div id="wxTop" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${c.accBg}"><div style="font-size:17px;font-weight:650;color:${c.acc}">${esc(big)}</div>${last||buy||young?`<div style="margin-top:4px;font-size:14px">${esc((last+" "+buy+" "+young).trim())}</div>`:""}</div>
     <div style="display:flex;flex-wrap:wrap;gap:20px;margin-top:12px"><div id="wxSc" style="flex:1 1 300px;min-width:0"></div><div id="wxFc" style="flex:1 1 240px;min-width:0"></div></div>
     <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(grT("wx_foot",{n:wx.n,b:fmt(wx.band,1)}))}</p>`;
   pwScatter(el.querySelector("#wxSc"),wx,c); pwWeek(el.querySelector("#wxFc"),wx,c);
 }
 const pwKg=(wx,t)=>Math.max(0,wx.a+wx.b*Math.max(0,wx.base_c-t));
 function pwScatter(el,wx,c){
-  const P=wx.pts||[], W=grW(el), H=240, x0=34, x1=W-8, y0=26, y1=200;
+  const P=wx.pts||[], W=grW(el), H=240, x0=34, x1=W-8, y0=26, y1=200, band=wx.band*(wx.early?1.5:1);   // a young line: a wider band
   const [ta,tb,ts]=niceAxis(Math.min(-5,...P.map(p=>p[1])),Math.max(wx.base_c+2,...P.map(p=>p[1]))), X=t=>x0+(x1-x0)*(t-ta)/(tb-ta);
-  const [,ky,kst]=niceAxis(0,Math.max(pwKg(wx,ta)+wx.band,...P.map(p=>p[2]))*1.05,true), Y=v=>y1-(y1-y0)*Math.max(0,v)/ky;
+  const [,ky,kst]=niceAxis(0,Math.max(pwKg(wx,ta)+band,...P.map(p=>p[2]))*1.05,true), Y=v=>y1-(y1-y0)*Math.max(0,v)/ky;
   let s="";
   for(let g=0;g<=4;g++){ const v=kst*g, y=Y(v); s+=`<line x1="${x0}" x2="${x1}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" style="stroke:${c.grid}"/><text x="${x0-5}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" style="fill:${c.dim}">${fmt(v,axisDec(kst))}</text>`; }
   for(let v=ta;v<=tb+1e-9;v+=ts) s+=`<text x="${X(v).toFixed(1)}" y="${y1+16}" text-anchor="middle" font-size="11" style="fill:${c.dim}">${fmt(v,0)}°</text>`;
   if(ta<0&&tb>0) s+=`<line x1="${X(0).toFixed(1)}" x2="${X(0).toFixed(1)}" y1="${y0}" y2="${y1}" style="stroke:${c.dim}" stroke-dasharray="2 3"/>`;
   const xs=[]; for(let k=0;k<=40;k++) xs.push(ta+(tb-ta)*k/40); if(wx.base_c>ta&&wx.base_c<tb) xs.push(wx.base_c); xs.sort((a,b)=>a-b);
-  const up=xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)+wx.band).toFixed(1)), dn=xs.slice().reverse().map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)-wx.band).toFixed(1));
+  const up=xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)+band).toFixed(1)), dn=xs.slice().reverse().map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)-band).toFixed(1));
   s+=`<polygon points="${up.concat(dn).join(" ")}" style="fill:${c.after}" opacity=".14"/>`;
   s+=`<polyline fill="none" points="${xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)).toFixed(1)).join(" ")}" style="stroke:${c.after}" stroke-width="2.5"/>`;
   const yd=P.length?P[P.length-1]:null;
   P.forEach(p=>{ const me=p===yd; s+=`<circle class="wxPt" cx="${X(p[1]).toFixed(1)}" cy="${Y(p[2]).toFixed(1)}" r="${me?6:3.5}" style="fill:${me?c.ink:c.bar}${me?";stroke:"+c.card:""}" stroke-width="1.5"><title>${esc(p[0]+" · "+fmt(p[1],1)+" °C · "+fmt(p[2],1)+" kg")}</title></circle>`; });
-  if(yd){ const r=X(yd[1])>x1-70; s+=`<text x="${(X(yd[1])+(r?-9:9)).toFixed(1)}" y="${(Y(yd[2])-8).toFixed(1)}" font-size="11"${r?' text-anchor="end"':""} style="fill:${c.ink}">${esc(grT("wx_yday"))}</text>`; }
-  s+=`<text x="${x1}" y="12" text-anchor="end" font-size="12" font-weight="650" style="fill:${c.ink}">${esc(grT("wx_at0",{a:fmt(wx.at0,1)}))}</text>`;
+  // the newest day: "yesterday" only when it is yesterday's pellets day, else its date
+  if(yd){ const r=X(yd[1])>x1-70, y=new Date(); y.setDate(y.getDate()-1);
+    const iso=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
+    const lb=yd[0]===iso?grT("wx_yday"):dmon(new Date(yd[0]+"T12:00").getTime()/1000);
+    s+=`<text class="wxYd" x="${(X(yd[1])+(r?-9:9)).toFixed(1)}" y="${(Y(yd[2])-8).toFixed(1)}" font-size="11"${r?' text-anchor="end"':""} style="fill:${c.ink}">${esc(lb)}</text>`; }
+  s+=`<text x="${x1}" y="12" text-anchor="end" font-size="12" font-weight="650" style="fill:${c.ink}">${esc(grT("wx_at0",{a:fmt(wx.at0,1),t:wx.ref_c||0}))}</text>`;
   s+=`<text x="0" y="12" font-size="11" style="fill:${c.dim}">${esc(grT("wx_ax_y"))}</text><text x="${x1}" y="${H-4}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(grT("wx_ax_x"))}</text>`;
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%" role="img" aria-label="${esc(grT("wx_h"))}">${s}</svg>`;
 }
@@ -1128,8 +1148,6 @@ function pwWeek(el,wx,c){
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%">${s}</svg><p style="margin:4px 0 0;color:${c.dim};font-size:13px">${esc(grT("wx_week_note",{a:fmt(wx.fc_band,0)}))}</p>`;
 }
 /* ==SHARED-END== */
-// a typed number: plain digits with one . or , only (not "0x10", "1e3", "+5"); anything else -> NaN (same rule as /home)
-const numTyped=s=>{ s=String(s==null?"":s).trim().replace(",","."); return /^-?\d+(\.\d+)?$/.test(s)?Number(s):NaN; };
 const numF=id=>numTyped(document.getElementById(id).value), allNum=o=>Object.values(o).every(v=>isFinite(v));
 // ========================= i18n =========================
 const I18N = {
@@ -1146,11 +1164,10 @@ const I18N = {
     u_hour:"h", ig_dose_int:"Time between extra doses", ig_dose:"Extra dose", ig_max_doses:"Most extra doses", ig_start_fuel:"Start pellets", ig_ign_air:"Air while lighting", ig_warmup:"Warm-up", ig_timeout:"Time limit",
     conn_demo:"demo data (no contact with the monitor)", conn_stale:"no new data for {x}", conn_never:"no data from the boiler yet",
     // tiles
-    tl_boiler:"Boiler", tl_flue:"Flue", tl_power:"Power", tl_fan:"Fan", tl_aux:"Aux 003 / 004", tl_lux:"Flame",
+    tl_boiler:"Boiler", tl_flue:"Flue", tl_power:"Power", tl_fan:"Fan", tl_lux:"Flame",
     lux_sub:"0–156 · flame above 17", btn_ok:"Yes, continue", btn_cancel:"Cancel",
     tl_silo:"Boiler silo counter", silo_own:"the boiler's own count, not your stock", tl_ign:"Ignitions", tl_out:"On now",
     u_rpm:"rpm", set_x:"target {x} °C", cmd_exp:"{x} % · expected {y} rpm", fan_ok_x:"speed OK ({p} % of normal)", fan_slow_x:"too slow ({p} % of normal)", fan_start:"not judged while starting", fan_steady:"judged only while burning steadily", u_h:"h", kgph_v:"{x} kg/h",
-    aux_unid:"unidentified — bench check", aux_flame:"flame = field {x}",
     modulating:"auto-adjusting", total:"total", auger:"Auger", igniter:"Igniter",
     // panel titles
     h_fsm:"What the boiler is doing", h_adv:"Checks & tips", h_temps:"Temperatures",
@@ -1197,7 +1214,7 @@ const I18N = {
     eff_note_nf:"The real efficiency cannot be measured. Power in pellets assumes about 4.8 kWh per kg.",
     tbl_more:"More columns: swipe the table sideways →",
     scatter_wait:"waiting for burning data (power above 15 %)…", flue_axis:"flue °C",
-    no_flue:"no flue sensor", no_flue_t:"No flue sensor fitted on this burner.", no_flue_s:"The value the boiler sends is its own board temperature, so this chart would mislead. It fills in if a flue sensor is fitted.",
+    no_flue:"no flue sensor",
     flame_ph1:"No flame reading yet.",
     flame_ph2:"Choose the flame sensor input on the History & tips tab.",
     // advisories
@@ -1287,11 +1304,10 @@ const I18N = {
       slow_turns:"Askepladen tager nu ca. {s} s pr. drejning, før tog den {w} s. Den kan være ved at blive stiv eller slidt, eller der samler sig aske under den."},
     u_hour:"t", ig_dose_int:"Tid mellem ekstra doser", ig_dose:"Ekstra dosis", ig_max_doses:"Højst ekstra doser", ig_start_fuel:"Startpiller", ig_ign_air:"Luft under tænding", ig_warmup:"Opvarmning", ig_timeout:"Tidsgrænse",
     conn_demo:"demo-data (ingen kontakt til monitoren)", conn_stale:"ingen nye data i {x}", conn_never:"ingen data fra kedlen endnu",
-    tl_boiler:"Kedel", tl_flue:"Røggas", tl_power:"Ydelse", tl_fan:"Røgsuger", tl_aux:"Aux 003 / 004", tl_lux:"Flamme",
+    tl_boiler:"Kedel", tl_flue:"Røggas", tl_power:"Ydelse", tl_fan:"Røgsuger", tl_lux:"Flamme",
     lux_sub:"0–156 · flamme over 17", btn_ok:"Ja, fortsæt", btn_cancel:"Annuller",
     tl_silo:"Kedlens silotæller", silo_own:"kedlens egen tælling, ikke dit lager", tl_ign:"Optændinger", tl_out:"Tændt nu",
     u_rpm:"o/min", set_x:"ønsket {x} °C", cmd_exp:"{x} % · forventet {y} o/min", fan_ok_x:"fart OK ({p} % af normal)", fan_slow_x:"for langsom ({p} % af normal)", fan_start:"vurderes ikke under opstart", fan_steady:"vurderes kun under jævn drift", u_h:"t", kgph_v:"{x} kg/t",
-    aux_unid:"uidentificeret — bænktjek", aux_flame:"flamme = felt {x}",
     modulating:"regulerer selv", total:"i alt", auger:"Snegl", igniter:"Tændelement",
     h_fsm:"Hvad kedlen laver", h_adv:"Tjek & råd", h_temps:"Temperaturer",
     h_powfan:"Ydelse & røgsuger", h_pid:"Sådan følger ydelsen den ønskede temperatur", pid_sub:"anslået",
@@ -1334,7 +1350,7 @@ const I18N = {
     eff_note_nf:"Den reelle virkningsgrad kan ikke måles. Effekt i pillerne regner med ca. 4,8 kWh pr. kg.",
     tbl_more:"Flere kolonner: stryg tabellen til siden →",
     scatter_wait:"venter på data fra fyring (ydelse over 15 %)…", flue_axis:"røggas °C",
-    no_flue:"ingen røgføler", no_flue_t:"Der er ingen røgføler på denne brænder.", no_flue_s:"Værdien kedlen sender er printets egen temperatur, så grafen ville vildlede. Den fyldes ud hvis der monteres en røgføler.",
+    no_flue:"ingen røgføler",
     flame_ph1:"Ingen flammemåling endnu.",
     flame_ph2:"Vælg flammefølerens indgang på fanen Historik & råd.",
     adv_demo_t:"Demo-tilstand", adv_demo_s:"Ingen kontakt til monitoren — viser opdigtede data. Start programmet på monitoren for at se rigtige data.",
@@ -1415,10 +1431,7 @@ const I18N = {
 // ---- strings for the Schedule and Optimiser tabs ----
 Object.assign(I18N.en, {
   tab_disc:"Discoveries", disc_head:"Made automatically from your own data ({n} readings, updated {t}). New cards appear as the program finds something worth showing. Ideas, not advice: check before you change a setting.", disc_none:"Nothing yet: the discoveries are made from the saved data and show up after the next update.",
-  tab_sch:"Settings", tab_opt:"Analysis", moved_home:"These settings are on the new page: Settings", starts_today:"starts today: {n}",
-  sd_blocked_manual:"stopped by hand in this time slot", sd_blocked_gave_up:"gave up after the start attempts",
-  sd_running:"{st}", sd_pending:"attempt {n} of {max}", sd_pending_ending:"ending the WAITING pause first",
-  sd_cooldown:"{left} min left", sd_max_starts:"{n} of {max} today",
+  tab_sch:"Settings", tab_opt:"Analysis", moved_home:"These settings are on the new page: Settings",
   ad_waiting:"alarm {a}: reset and restart in {left} min (attempt {n} of {max})", ad_clearing:"alarm {a} (attempt {n} of {max})",
   ad_restarted:"after alarm {a}", ad_saved:"after alarm {a}", ad_gave_up:"{n} of {max} attempts used in 24 h",
   ad_not_allowed:"alarm {a}", ad_not_burning:"alarm {a}",
@@ -1464,21 +1477,9 @@ Object.assign(I18N.en, {
   ars_waiting:"Waiting before reset and restart", ars_clearing:"Resetting the alarm", ars_restarted:"Restarted — waiting for RUNNING",
   ars_saved:"Restarted — running again", ars_gave_up:"Gave up — alarm stays",
   sys_ar:"Auto alarm reset: {n} restarts",
-  sch_title:"Automatic start at set times", sch_save:"Save", sch_saved:"saved", sch_add:"+ Add time slot",
-  sch_windows:"Time slots", sch_opts:"Rules & protection", sch_on:"on",
-  sch_win_note:"In an active time slot the boiler is started if it is STOPPED. Add up to 24 time slots. A slot may run past midnight (e.g. 22:00–02:00).",
-  sch_minoff:"Minimum off time before an automatic start (protects the burner)", sch_maxst:"Max starts per day (all starts)",
-  sch_short:"Warn when a run is shorter than", sch_att:"Start attempts before giving up (warning after 2)",
-  sch_wait:"Wait for the boiler to react", sch_override:"Also end WAITING (MINIMUM MODE / timer) in a time slot",
-  sch_idle_note:"The boiler is only started from STOPPED. WAITING is only ended if the option above is on. An ALARM is only reset if Auto alarm reset (below) is on. If you stop the boiler by hand during a time slot, it stays stopped until the next slot.",
-  sch_override_confirm:"Are you sure?\n\nDuring a time slot the boiler's own WAITING (MINIMUM MODE PAUSE / BOOST / timer) is ended with STOP → START.\n\nMINIMUM MODE itself stays on in the boiler: it cannot be switched off remotely. To switch it off completely, set MENU → MINIMUM MODE → ACTIVE = NO on the boiler's screen.",
-  sch_not_armed:"Remote start is off. It must be switched on in the program on the monitor (--allow-remote-start). You can still edit and save the schedule; it only starts the boiler once remote start is on.",
+  sch_save:"Save", sch_saved:"saved",
   sch_no_server:"This needs the monitor (not available with demo data).",
   days:["Mo","Tu","We","Th","Fr","Sa","Su"], del:"✕",
-  st_off:"Disabled", st_outside:"Outside the time slots", st_running:"Running", st_pending:"Start sent — waiting for the boiler",
-  st_cooldown:"Waiting (minimum off time)", st_max_starts:"Max starts reached today", st_alarm:"ALARM — not starting",
-  st_waiting:"WAITING (MINIMUM MODE / timer) — not ended, option is off", st_blocked:"On hold until the next time slot", st_no_link:"No data from the boiler",
-  st_not_armed:"Remote start is off",
   opt_sugg:"Suggestions", opt_days:"Per burning day", opt_lg_fuel:"pellets kg/day", opt_lg_starts:"starts/day",
   opt_table:"Daily summary", opt_reset:"Reset history (after service)",
   opt_reset_note:"Starts a fresh 4-week period; older days are ignored, nothing is deleted.",
@@ -1510,18 +1511,18 @@ Object.assign(I18N.en, {
   at_title:"Ash plate: seconds per turn", at_note:"Each dot is one turn of the ash plate (only measured with 1-second readings). A normal turn on this burner takes about 6–7 s. If the dots slowly climb, the plate is getting stiff or worn, or ash is building up under it. The boiler gives up at about 15 s.",
   at_now:"Last turn {s} s · usual {m} s · turns measured: {n}", at_none:"No turns measured yet: they are timed only with 1-second readings.", at_slow:"Turns are getting slower: now about {s} s, it used to be {m} s. Check the ash plate for stiffness, wear or ash underneath.",
   fp_title:"Flame and fan at each power level", fp_lg_flame:"average flame (0–156)", fp_lg_rpm:"average fan speed (rpm)",
-  fp_min:"{m} min", fp_none:"Shows up after some burning.", page_title:"Pellet burner boiler", state_n:"state {n}", save_failed:"Could not save", num_bad:"Please type plain numbers (like 12 or 2.5).", del_title:"Delete time slot",
+  fp_min:"{m} min", fp_none:"Shows up after some burning.", page_title:"Pellet burner boiler", state_n:"state {n}", save_failed:"Could not save", num_bad:"Please type plain numbers (like 12 or 2.5).",
   layout_new:"New layout →",
   st_title:"Pellets at home", st_none:"Not set yet — press “I counted…” once.", st_sub:"{kg} kg on {d} − {b} kg burned since",
   st_days:"≈ {n} days left", st_days_none:"days left: needs a few days of burning",
-  st_buy:"buy before {d} (keeps {r} kg spare · {p} kg/day)", st_buy_now:"buy pellets now — under {r} kg spare",
+  st_buy:"buy before {d} (keeps {r} kg spare · {p} kg/day)", st_buy_wx:"buy before {d} (keeps {r} kg spare · {p} kg/day from the weather forecast)", st_buy_now:"buy pellets now — under {r} kg spare",
   st_deliver:"Delivery…", st_count:"I counted…", st_bad:"Please type a number of kg.",
   st_ask_deliver:"How many kg were delivered? (a pallet is often 960 kg, a bag 15 kg)",
   st_ask_name:"Name of the new pellets (optional — gives them their own colour in the ignition chart):",
   st_ask_count:"How many kg pellets do you have at home now, store + silo? (bags × 15 kg)",
   st_note:"Counts everything at home: bags, store and the boiler's silo. What the boiler burns is taken off automatically. Count again now and then to keep it right.",
   set_home:"These settings are also on the new page, in short groups with help texts: Settings →", wm_title:"Heating plan (the web stops and starts the burner)", wm_board:"Use the boiler's own minimum-mode settings (STOP AT, PAUSE, BOOST 1 and 2)",
-  wm_stop:"Stop when the power is at or below", wm_stop_help:"Stop at power: when the boiler has burned at least {r} minutes and its power stays at or below this % for {a} minutes, the monitor stops it — the house needs no more heat right now. Not used inside a Keep warm period (there the boiler regulates itself). A Start or Warm-by period can have its own %, which then applies until that burn ends. Lower = longer, calmer burns and fewer starts; higher = shorter burns and more starts. Typical 30–40 %.", wm_after:"…for at least", wm_pause:"Start again after (if no start time comes first, 0 = off)", wm_boosts:"Start times (always, also when warm)", wm_minc:"Never let the boiler get colder than (0 = off)", wm_restart:"In Keep warm: start again when the boiler is this much below its target", wm_pump:"Pump start temperature (as set on the boiler)", wm_periods:"Periods:", wm_stopat:"stop at {p} %", wm_per_edit:"Edit the periods on the new page →", wm_k_keep:"Keep warm", wm_k_start:"Just start", wm_k_warmby:"Warm by", wx_title:"Outside temperature", wx_find:"Town or postcode (Denmark or Germany)", wx_search:"Find", wx_pick:"Pick", wx_use:"Use", wx_off:"Turn off", wx_offtxt:"Off", wx_now:"{c} °C in {n}", wx_wait:"{n} - fetching…", wx_old:"{n} - last reading {m} min ago (no internet?)", wx_none:"No place found.", wx_err:"No answer from the weather service. Is the monitor on the internet?", wx_note:"Optional. Fetched every 30 min from Open-Meteo (free, no account). Only the place is sent, rounded to about 1 km. The map picker is on the new page.", ab_title:"Ash bin size", ab_size:"The bin holds", ab_none:"Not set", ab_set:"{kg} kg", ab_note:"Used to show how full the ash bin is and when it will be full (on the new page, after you press Just emptied).",
+  wm_stop:"Stop when the power is at or below", wm_stop_help:"Stop at power: when the boiler has burned at least {r} minutes and its power stays at or below this % for {a} minutes, the monitor stops it — the house needs no more heat right now. Not used inside a Keep warm period (there the boiler regulates itself). A Start or Warm-by period can have its own %, which then applies until that burn ends. Lower = longer, calmer burns and fewer starts; higher = shorter burns and more starts. Typical 30–40 %.", wm_after:"…for at least", wm_pause:"Start again after (if no start time comes first, 0 = off)", wm_boosts:"Start times (always, also when warm)", wm_minc:"Never let the boiler get colder than (0 = off)", wm_restart:"In Keep warm: start again when the boiler is this much below its target", wm_periods:"Periods:", wm_stopat:"stop at {p} %", wm_per_edit:"Edit the periods on the new page →", wm_k_keep:"Keep warm", wm_k_start:"Just start", wm_k_warmby:"Warm by",
   wm_note:"When the burner has run at low power for a while, the web stops it so the house can cool down, instead of the boiler's 20-minute burn-out and re-lighting. It starts again at each start time, even if the boiler is still warm, or when the pause has run out. It never resets an alarm. If the monitor is off, the web cannot stop or start the burner; the boiler's own MINIMUM MODE (with a lower STOP AT, e.g. 30 %) can be used as a backup.",
   wm_off:"Off", wm_hist:"Last actions:", wm_plan_note:"Your heating plan has {n} periods; the start times are set there.", wm_plan_link:"Open the heating plan →", wm_did_stop:"stopped", wm_did_start:"started",
   wm_confirm:"The web will stop the burner at low power and start it at the start times. Turn on?",
@@ -1530,25 +1531,12 @@ Object.assign(I18N.en, {
   wm_st_busy:"On · the boiler is busy (starting or pausing)", wm_st_alarm:"On · boiler in ALARM, waiting", wm_st_gave_up:"On · start failed 3 times, tries again at the next start time",
   wm_st_no_link:"On · no data from the boiler", wm_st_soon:"On · the next period starts within 30 min: the burner carries on (no web pause)", wm_st_not_armed:"On · but remote start is not switched on in the program",
   wm_st_keep:"On · keeping warm now ({name})", wm_st_keep_wait:"On · keeping warm ({name}): starts again when the boiler has cooled {c} °C",
-  vv_title:"Hot-water tank sensor (your own)", vv_source:"Where the temperature comes from",
-  vv_age:"Use the safe value after", vv_safe:"Safe value when no reading",
-  vv_src_mqtt:"Home Assistant (MQTT)", vv_src_http:"A script on this monitor", vv_src_onewire:"Sensor on the monitor (DS18B20)",
-  vv_how_mqtt:"In Home Assistant, send the tank temperature to the topic burner/cmd/vvb (just the number, e.g. 52.5) at least every 5 minutes, not retained.",
-  vv_how_http:"Send the number to this page: POST /api/vvb with {\"c\": 52.5} (from this monitor only).",
-  vv_how_onewire:"A DS18B20 sensor on the Raspberry Pi's 1-wire pin, taped to the tank's sensor pocket. Read every 30 s.",
-  vv_note:"The boiler shows this as VVB on its screen and uses it for HWT PRIORITY (hot water first). If the sensor goes quiet, the boiler is told the safe value — the tank counts as warm, so a broken sensor can never start the boiler. Turn on HWT PRIORITY on the boiler's screen to use it.",
-  vv_off:"Off — the boiler gets no tank temperature", vv_ok:"Tank {c} °C · {s} s ago", vv_none:"Waiting for the first reading — the boiler is told {safe} °C",
-  vv_stale:"No reading for {m} min — the boiler is told {safe} °C", vv_err:"Could not save",
-  vv_confirm:"Send your own hot-water tank temperature to the boiler?\n\nOnly do this with a sensor you trust. If it stops sending, the boiler is told the safe value (tank warm).",
   wt_vvb_stale:"No reading from the hot-water tank sensor for {min} min — the boiler is told {safe} °C until it is back.",
   fp_note:"The flame number is how bright the flame looks to the sensor — not how much heat you get. Still useful: a bright, steady flame means the air and pellets are in balance. If the flame gets dimmer at high power, the fan may be blowing too hard for the pellets fed there. Real efficiency would need a flue-gas sensor (oxygen or flue temperature).",
 });
 Object.assign(I18N.da, {
   tab_disc:"Opdagelser", disc_head:"Lavet automatisk ud fra dine egne data ({n} målinger, opdateret {t}). Nye kort dukker op når programmet finder noget der er værd at vise. Idéer, ikke råd: tjek før du ændrer en indstilling.", disc_none:"Intet endnu: opdagelserne laves ud fra de gemte data og vises efter næste opdatering.",
-  tab_sch:"Indstillinger", tab_opt:"Analyse", moved_home:"Disse indstillinger er på den nye side: Indstillinger", starts_today:"starter i dag: {n}",
-  sd_blocked_manual:"stoppet i hånden i dette tidsrum", sd_blocked_gave_up:"opgav efter startforsøgene",
-  sd_running:"{st}", sd_pending:"forsøg {n} af {max}", sd_pending_ending:"afbryder først AFVENTER-pausen",
-  sd_cooldown:"{left} min tilbage", sd_max_starts:"{n} af {max} i dag",
+  tab_sch:"Indstillinger", tab_opt:"Analyse", moved_home:"Disse indstillinger er på den nye side: Indstillinger",
   ad_waiting:"alarm {a}: nulstilles og startes om {left} min (forsøg {n} af {max})", ad_clearing:"alarm {a} (forsøg {n} af {max})",
   ad_restarted:"efter alarm {a}", ad_saved:"efter alarm {a}", ad_gave_up:"{n} af {max} forsøg brugt i døgnet",
   ad_not_allowed:"alarm {a}", ad_not_burning:"alarm {a}",
@@ -1594,21 +1582,9 @@ Object.assign(I18N.da, {
   ars_waiting:"Venter før nulstilling og genstart", ars_clearing:"Nulstiller alarmen", ars_restarted:"Genstartet — venter på DRIFT",
   ars_saved:"Genstartet — kører igen", ars_gave_up:"Opgivet — alarmen bliver stående",
   sys_ar:"Automatisk alarmnulstilling: {n} genstarter",
-  sch_title:"Automatisk start på faste tider", sch_save:"Gem", sch_saved:"gemt", sch_add:"+ Tilføj tidsrum",
-  sch_windows:"Tidsrum", sch_opts:"Regler & beskyttelse", sch_on:"til",
-  sch_win_note:"I et aktivt tidsrum startes kedlen, hvis den er STOPPET. Tilføj op til 24 tidsrum. Et tidsrum må gå over midnat (fx 22:00–02:00).",
-  sch_minoff:"Mindste stoptid før en automatisk start (skåner brænderen)", sch_maxst:"Maks. starter pr. døgn (alle starter)",
-  sch_short:"Advar, når en fyringsperiode er kortere end", sch_att:"Startforsøg før der gives op (advarsel efter 2)",
-  sch_wait:"Vent på at kedlen reagerer", sch_override:"Afbryd også AFVENTER (MINIMUMDRIFT / timer) i et tidsrum",
-  sch_idle_note:"Kedlen startes kun fra STOPPET. AFVENTER afbrydes kun, hvis valget ovenfor er slået til. En ALARM nulstilles kun, hvis Automatisk alarmnulstilling (nedenfor) er slået til. Stopper du kedlen i hånden i et tidsrum, forbliver den stoppet til næste tidsrum.",
-  sch_override_confirm:"Er du sikker?\n\nI et tidsrum afbrydes kedlens egen AFVENTER (MINIMUMDRIFT PAUSE / BOOST / timer) med STOP → START.\n\nSelve MINIMUMDRIFT forbliver slået til i kedlen: den kan ikke slås fra med fjernbetjening. Vil du slå den helt fra, så sæt MENU → MINIMUMDRIFT → AKTIV = NEJ på kedlens skærm.",
-  sch_not_armed:"Fjernstart er slået fra. Den skal slås til i programmet på monitoren (--allow-remote-start). Du kan stadig redigere og gemme tidsplanen; den starter først kedlen, når fjernstart er slået til.",
+  sch_save:"Gem", sch_saved:"gemt",
   sch_no_server:"Det kræver monitoren (virker ikke med demo-data).",
   days:["Ma","Ti","On","To","Fr","Lø","Sø"],
-  st_off:"Slået fra", st_outside:"Uden for tidsrummene", st_running:"Kører", st_pending:"Start sendt — venter på kedlen",
-  st_cooldown:"Venter (mindste stoptid)", st_max_starts:"Maks. starter nået i dag", st_alarm:"ALARM — starter ikke",
-  st_waiting:"AFVENTER (MINIMUMDRIFT / timer) — afbrydes ikke, valget er slået fra", st_blocked:"Sat i bero til næste tidsrum", st_no_link:"Ingen data fra kedlen",
-  st_not_armed:"Fjernstart er slået fra",
   opt_sugg:"Forslag", opt_days:"Pr. fyringsdag", opt_lg_fuel:"piller kg/dag", opt_lg_starts:"starter/dag",
   opt_table:"Dagsoversigt", opt_reset:"Nulstil historik (efter service)",
   opt_reset_note:"Starter en ny 4-ugers periode; ældre dage ignoreres, intet slettes.",
@@ -1639,18 +1615,18 @@ Object.assign(I18N.da, {
   at_title:"Askeplade: sekunder pr. drejning", at_note:"Hver prik er én drejning af askepladen (måles kun med målinger hvert sekund). En normal drejning på denne brænder tager ca. 6–7 s. Kryber prikkerne langsomt opad, er pladen ved at gå tungt eller blive slidt, eller der samler sig aske under den. Kedlen giver op ved ca. 15 s.",
   at_now:"Sidste drejning {s} s · normalt {m} s · drejninger målt: {n}", at_none:"Ingen drejninger målt endnu: de tidtages kun med målinger hvert sekund.", at_slow:"Drejningerne bliver langsommere: nu ca. {s} s, før {m} s. Tjek om askepladen går tungt, er slidt eller har aske under sig.",
   fp_title:"Flamme og røgsuger ved hver ydelse", fp_lg_flame:"gennemsnitlig flamme (0–156)", fp_lg_rpm:"røgsugerens gennemsnitlige omdrejninger (o/min)",
-  fp_min:"{m} min", fp_none:"Vises, når kedlen har fyret et stykke tid.", page_title:"Pillefyr", state_n:"tilstand {n}", save_failed:"Kunne ikke gemme", num_bad:"Skriv almindelige tal (fx 12 eller 2,5).", del_title:"Slet tidsrum",
+  fp_min:"{m} min", fp_none:"Vises, når kedlen har fyret et stykke tid.", page_title:"Pillefyr", state_n:"tilstand {n}", save_failed:"Kunne ikke gemme", num_bad:"Skriv almindelige tal (fx 12 eller 2,5).",
   layout_new:"Nyt layout →",
   st_title:"Piller derhjemme", st_none:"Ikke sat endnu — tryk “Jeg har talt…” én gang.", st_sub:"{kg} kg d. {d} − {b} kg brændt siden",
   st_days:"≈ {n} dage tilbage", st_days_none:"dage tilbage: kræver nogle dages fyring",
-  st_buy:"køb før {d} (beholder {r} kg i reserve · {p} kg/dag)", st_buy_now:"køb piller nu — under {r} kg i reserve",
+  st_buy:"køb før {d} (beholder {r} kg i reserve · {p} kg/dag)", st_buy_wx:"køb før {d} (beholder {r} kg i reserve · {p} kg/dag ud fra vejrudsigten)", st_buy_now:"køb piller nu — under {r} kg i reserve",
   st_deliver:"Levering…", st_count:"Jeg har talt…", st_bad:"Skriv et antal kg.",
   st_ask_deliver:"Hvor mange kg blev leveret? (en palle er ofte 960 kg, en sæk 15 kg)",
   st_ask_name:"Navn på de nye piller (valgfrit — giver dem deres egen farve i optændingsgrafen):",
   st_ask_count:"Hvor mange kg piller har du derhjemme nu, lager + silo? (sække × 15 kg)",
   st_note:"Tæller alt derhjemme: sække, lager og kedlens silo. Det kedlen brænder, trækkes fra automatisk. Tæl efter en gang imellem, så tallet passer.",
   set_home:"Disse indstillinger findes også på den nye side, i korte grupper med hjælpetekster: Indstillinger →", wm_title:"Varmeplan (websiden stopper og starter brænderen)", wm_board:"Brug kedlens egne minimumdrift-indstillinger (STOP VED, PAUSE, BOOST 1 og 2)",
-  wm_stop:"Stop når effekten er på eller under", wm_stop_help:"Stop ved effekt: når kedlen har brændt mindst {r} minutter, og effekten ligger på eller under denne % i {a} minutter, stopper monitoren den – huset behøver ikke mere varme lige nu. Bruges ikke i en Hold varm-periode (dér styrer kedlen selv). En Start- eller Varm-til-periode kan have sin egen %, som så gælder til den brænding slutter. Lavere = længere, roligere brændinger og færre starter; højere = kortere brændinger og flere starter. Typisk 30–40 %.", wm_after:"…i mindst", wm_pause:"Start igen efter (hvis ingen starttid kommer før, 0 = fra)", wm_boosts:"Starttider (altid, også når varm)", wm_minc:"Lad aldrig kedlen blive koldere end (0 = fra)", wm_restart:"I Hold varm: start igen når kedlen er så meget under det ønskede", wm_pump:"Pumpens starttemperatur (som sat på kedlen)", wm_periods:"Perioder:", wm_stopat:"stop ved {p} %", wm_per_edit:"Ret perioderne på den nye side →", wm_k_keep:"Hold varm", wm_k_start:"Kun start", wm_k_warmby:"Varm kl.", wx_title:"Udetemperatur", wx_find:"By eller postnummer (Danmark eller Tyskland)", wx_search:"Find", wx_pick:"Vælg", wx_use:"Brug", wx_off:"Slå fra", wx_offtxt:"Slået fra", wx_now:"{c} °C i {n}", wx_wait:"{n} - henter…", wx_old:"{n} - seneste måling for {m} min siden (intet internet?)", wx_none:"Intet sted fundet.", wx_err:"Intet svar fra vejrtjenesten. Er monitoren på internettet?", wx_note:"Valgfri. Hentes hver 30. min fra Open-Meteo (gratis, uden konto). Kun stedet sendes, afrundet til ca. 1 km. Kortet til at vælge sted er på den nye side.", ab_title:"Askeskuffens størrelse", ab_size:"Skuffen rummer", ab_none:"Ikke sat", ab_set:"{kg} kg", ab_note:"Bruges til at vise hvor fuld askeskuffen er og hvornår den er fuld (på den nye side, efter du har trykket Lige tømt).",
+  wm_stop:"Stop når effekten er på eller under", wm_stop_help:"Stop ved effekt: når kedlen har brændt mindst {r} minutter, og effekten ligger på eller under denne % i {a} minutter, stopper monitoren den – huset behøver ikke mere varme lige nu. Bruges ikke i en Hold varm-periode (dér styrer kedlen selv). En Start- eller Varm-til-periode kan have sin egen %, som så gælder til den brænding slutter. Lavere = længere, roligere brændinger og færre starter; højere = kortere brændinger og flere starter. Typisk 30–40 %.", wm_after:"…i mindst", wm_pause:"Start igen efter (hvis ingen starttid kommer før, 0 = fra)", wm_boosts:"Starttider (altid, også når varm)", wm_minc:"Lad aldrig kedlen blive koldere end (0 = fra)", wm_restart:"I Hold varm: start igen når kedlen er så meget under det ønskede", wm_periods:"Perioder:", wm_stopat:"stop ved {p} %", wm_per_edit:"Ret perioderne på den nye side →", wm_k_keep:"Hold varm", wm_k_start:"Kun start", wm_k_warmby:"Varm kl.",
   wm_note:"Når brænderen har kørt på lav effekt et stykke tid, stopper websiden den, så huset kan køle af, i stedet for kedlens 20 minutters udbrænding og gentænding. Den starter igen ved hver starttid, også selv om kedlen stadig er varm, eller når pausen er gået. Den nulstiller aldrig en alarm. Er monitoren slukket, kan websiden ikke stoppe eller starte brænderen; kedlens egen MINIMUMDRIFT (med en lavere STOP VED, f.eks. 30 %) kan bruges som reserve.",
   wm_off:"Fra", wm_hist:"Seneste handlinger:", wm_plan_note:"Din varmeplan har {n} perioder; starttiderne sættes der.", wm_plan_link:"Åbn varmeplanen →", wm_did_stop:"stoppede", wm_did_start:"startede",
   wm_confirm:"Websiden vil stoppe brænderen ved lav effekt og starte den ved starttiderne. Slå til?",
@@ -1659,16 +1635,6 @@ Object.assign(I18N.da, {
   wm_st_busy:"Til · kedlen er i gang (starter eller holder pause)", wm_st_alarm:"Til · kedlen er i ALARM, venter", wm_st_gave_up:"Til · start mislykkedes 3 gange, prøver igen ved næste starttid",
   wm_st_no_link:"Til · ingen data fra kedlen", wm_st_soon:"Til · næste periode starter inden 30 min: brænderen fortsætter (ingen webpause)", wm_st_not_armed:"Til · men fjernstart er ikke slået til i programmet",
   wm_st_keep:"Til · holder varmen nu ({name})", wm_st_keep_wait:"Til · holder varmen ({name}): starter igen, når kedlen er kølet {c} °C af",
-  vv_title:"VVB-føler (din egen)", vv_source:"Hvor temperaturen kommer fra",
-  vv_age:"Brug sikker værdi efter", vv_safe:"Sikker værdi uden måling",
-  vv_src_mqtt:"Home Assistant (MQTT)", vv_src_http:"Et script på denne monitor", vv_src_onewire:"Føler på monitoren (DS18B20)",
-  vv_how_mqtt:"Send VVB-temperaturen fra Home Assistant til emnet burner/cmd/vvb (kun tallet, fx 52) mindst hvert 5. minut, ikke som gemt besked.",
-  vv_how_http:"Send tallet til denne side: POST /api/vvb med {\"c\": 52.5} (kun fra denne monitor).",
-  vv_how_onewire:"En DS18B20-føler på Raspberry Pi'ens 1-wire-ben, sat i VVB'ens følerlomme. Læses hvert 30. sekund.",
-  vv_note:"Kedlen viser værdien som VVB på skærmen og bruger den til VVB PRIORITET (varmt vand først). Holder føleren op med at sende, får kedlen den sikre værdi — VVB'en regnes som varm, så en defekt føler kan aldrig starte kedlen. Slå VVB PRIORITET til på kedlens skærm for at bruge det.",
-  vv_off:"Fra — kedlen får ingen VVB-temperatur", vv_ok:"VVB {c} °C · for {s} s siden", vv_none:"Venter på første måling — kedlen får {safe} °C",
-  vv_stale:"Ingen måling i {m} min — kedlen får {safe} °C", vv_err:"Kunne ikke gemme",
-  vv_confirm:"Send din egen VVB-temperatur til kedlen?\n\nGør det kun med en føler du stoler på. Holder den op med at sende, får kedlen den sikre værdi (VVB varm).",
   wt_vvb_stale:"Ingen måling fra VVB-føleren i {min} min — kedlen får {safe} °C indtil den er tilbage.",
   fp_note:"Flammetallet viser, hvor lys flammen ser ud for føleren — ikke hvor meget varme du får. Det er stadig nyttigt: en lys, rolig flamme betyder, at luft og piller er i balance. Bliver flammen svagere ved høj ydelse, blæser røgsugeren måske for kraftigt i forhold til de piller, der tilføres. Den reelle virkningsgrad kræver en røggasføler (ilt eller røggastemperatur).",
 });
@@ -1991,19 +1957,8 @@ function addEvent(type,data){
   events.unshift({type,data,tm}); while(events.length>80)events.pop();
   renderLog();
 }
-// who / what started or stopped it: the event's `source`, in the server's words (labels.sources in /status.json)
-function srcText(e){
-  if(!e||!e.source) return "";
-  const m=(SERVER&&SERVER.labels&&SERVER.labels.sources)||{}, w=c=>{ const x=m[c]; return x?(x[LANG]||x.en||""):""; }, s=w(e.source);
-  return s&&e.after_alarm?s+", "+w("after_alarm"):s;
-}
-// the source of a command ("warm mode (low power)", "web" ...) in the page's words, the same rule as burner_ext.source_of
-function cmdSrc(s){ s=String(s||""); const k=[["warm","plan"],["schedule","schedule"],["auto_reset","auto_reset"],["mqtt","mqtt"],["web","web"]].find(p=>s.startsWith(p[0]));
-  return srcText({source:k?k[1]:"remote"})||s; }
-function srcLine(e){                       // "Started by: heating plan" / "Stopped by: ..."
-  const s=srcText(e); if(!s) return ""; const to=+e.to, fr=+e.from;
-  return (to===2||to===3)?t("started_by")+": "+s:(fr!==6&&(to===0||to===1||to===5))?t("stopped_by")+": "+s:(fr===6&&to===0)?t("reset_by")+": "+s:s;
-}
+// who / what started or stopped it: the server's words (labels.sources in /status.json) for srcText / srcLine / cmdSrc (SHARED)
+const srcMap=()=>(SERVER&&SERVER.labels&&SERVER.labels.sources)||{};
 function renderLog(){
   const el=document.getElementById("log"); if(!el) return;
   // live: the responder's log (survives reloads, knows who caused a change); demo: this page's own log
@@ -2011,7 +1966,7 @@ function renderLog(){
     const rows=SERVER.events.slice().reverse().slice(0,80).map(e=>{
       let msg="", cls="state";
       if(e.type==="transition"){
-        msg=t("ev_state",{x:stateName(e.to)}); const c=srcLine(e);
+        msg=t("ev_state",{x:stateName(e.to)}); const c=srcLine(e,srcMap(),t);
         if(c) msg+=` <span style="color:var(--faint)">· ${esc(c)}</span>`;
         if(e.to===6){ cls="alarm"; }
       } else if(e.type==="alarm"){ cls="alarm"; msg=esc(t("ev_alarm",{n:e.alarm, name:ALARM[e.alarm]||""}));
@@ -2118,7 +2073,7 @@ function renderTrans(mode){
     return `<div class="e ${cls}"><span class="tm">${today?"":dd.getDate()+"/"+(dd.getMonth()+1)+" "}${hhmm(x.epoch)}</span>`+
       `<span class="ms"><b style="color:${STATE_COLOR[from]||"#8b949e"}">${from==null?"?":esc(stateName(from))}</b> → `+
       `<b style="color:${STATE_COLOR[to]||"#e6edf3"}">${esc(stateName(to))}</b>`+
-      ` <span style="color:var(--faint)">${esc(dw)}${srcLine(x)?" · "+esc(srcLine(x)):""}</span></span></div>`;
+      ` <span style="color:var(--faint)">${esc(dw)}${srcLine(x,srcMap(),t)?" · "+esc(srcLine(x,srcMap(),t)):""}</span></span></div>`;
   }).join("");
 }
 
@@ -2154,7 +2109,7 @@ function renderSys(mode){
   const rm=SERVER.remote||{};
   parts.push(esc(t("sys_remote",{x:rm.armed?t("rem_on"):t("rem_off")})));
   if(rm.last_cmd){ const c=rm.last_cmd;
-    parts.push(esc(t("sys_last",{c:c.cmd, s:cmdSrc(c.source), t:hhmm(c.queued), d:c.delivered?t("sys_deliv"):t("sys_pend")}))); }
+    parts.push(esc(t("sys_last",{c:c.cmd, s:cmdSrc(c.source,srcMap()), t:hhmm(c.queued), d:c.delivered?t("sys_deliv"):t("sys_pend")}))); }
   const ar=SERVER.auto_reset;
   if(ar && ar.status && (ar.status.code!=="off" || ar.saves)) parts.push(esc(t("sys_ar",{n:ar.saves||0})));
   el.innerHTML=parts.join(" &nbsp;·&nbsp; ");
@@ -2471,7 +2426,6 @@ function flatten(latest, cfg){
 
 // ---- polling ----
 // why a poll got no data: this device offline / no reply at all (network error, timeout) / the monitor answered with an error
-const noAnswerKey=e=>navigator.onLine===false?"nodata_net":(e&&e.name&&e.name!=="SyntaxError")?"nodata_noreply":"nodata_resp";
 let pollBusy=false;                           // one poll at a time: skipped while one is still waiting (slow Wi-Fi)
 async function poll(){
   if(forceDemo){ demoTick(); return; }
@@ -2654,7 +2608,7 @@ function applyStatic(){
   S("arSave","sch_save");
   if(typeof AR!=="undefined" && AR) fillAutoReset(AR);
   document.title=t("page_title"); ["st_title","st_note","moved_home"].forEach(k=>S("t_"+k,k));
-  S("wmSave","sch_save"); ["set_home","wm_title","wm_board","wm_stop","wm_after","wm_pause","wm_boosts","wm_note","wm_minc","wm_restart","wm_pump"].forEach(k=>S("t_"+k,k));
+  S("wmSave","sch_save"); ["set_home","wm_title","wm_board","wm_stop","wm_after","wm_pause","wm_boosts","wm_note","wm_minc","wm_restart"].forEach(k=>S("t_"+k,k));
   S("t_u_h","u_h");
   if(typeof LASTWM!=="undefined" && LASTWM) renderWarm(LASTWM);      // status line in the new language
   S("stDeliver","st_deliver"); S("stCount","st_count"); S("layoutSwitch","layout_new");
@@ -2772,8 +2726,6 @@ function detailText(prefix, st){
   if(!st) return "";
   const p=st.p||{}, d=I18N[LANG]||I18N.en;
   let k=prefix+st.code;
-  if(prefix==="sd_" && st.code==="blocked") k="sd_blocked_"+(p.why||"manual");
-  if(prefix==="sd_" && st.code==="pending" && p.ending) k="sd_pending_ending";
   if(d[k]!=null) return t(k, Object.assign({}, p, {st: p.state!=null?stateName(p.state):""}));
   return st.text||"";
 }
@@ -2821,7 +2773,7 @@ function fillWarm(cfg){
   document.getElementById("wmBoard").checked=WM.use_board!==false;
   document.getElementById("wmMinC").value=WM.min_boiler_c?WM.min_boiler_c:"";   // 0 = off: shown as "off", not "0 °C"
   wmMinCUnit();
-  document.getElementById("wmRestart").value=WM.keep_restart_c??5; document.getElementById("wmPump").value=WM.pump_c??50;
+  document.getElementById("wmRestart").value=WM.keep_restart_c??5;
   wmShowValues(LASTWM);
 }
 function wmMinCUnit(){   // empty or 0 = off: the field says "off" and the °C goes away
@@ -2871,7 +2823,7 @@ function renderWarm(f){
 async function saveWarm(){
   const en=document.getElementById("wmEnabled").checked, board=document.getElementById("wmBoard").checked;
   const nv={stop_after_min:numF("wmAfter"), min_boiler_c:document.getElementById("wmMinC").value.trim()===""?0:numF("wmMinC"),   // empty = off
-    keep_restart_c:numF("wmRestart"), pump_c:numF("wmPump")};
+    keep_restart_c:numF("wmRestart")};
   if(!board){ nv.stop_pct=numF("wmStop"); nv.pause_h=numF("wmPause"); }
   const m=document.getElementById("wmMsg");
   if(!allNum(nv)){ m.textContent=t("num_bad"); m.className="savemsg bad"; return; }
@@ -2895,7 +2847,7 @@ function renderDiscoveries(){
   const head=document.getElementById("discHead"), box=document.getElementById("discCards"); if(!box) return;
   const L2=o=>o&&typeof o==="object"?(o[LANG]||o.en||""):(o||"");
   const cards=(DISC&&DISC.cards)||[];
-  head.textContent=cards.length?t("disc_head",{n:fmt(DISC.rows||0,0),t:DISC.generated?new Date(DISC.generated).toLocaleDateString(LOC(),{day:"numeric",month:"short"})+" "+clock(new Date(DISC.generated).getTime()/1000):"—"}):t("disc_none");
+  head.textContent=cards.length?t("disc_head",{n:fmt(DISC.rows||0,0),t:DISC.generated?dmon(new Date(DISC.generated).getTime()/1000)+" "+clock(new Date(DISC.generated).getTime()/1000):"—"}):t("disc_none");
   box.innerHTML=cards.map((c,i)=>`<div class="card" style="margin-top:12px"><h3>${esc(L2(c.title))}</h3>
     ${c.chart?`<canvas id="disc${i}" height="190"></canvas>`:""}<div class="note" style="margin-top:6px">${esc(L2(c.text))}</div></div>`).join("");
   cards.forEach((c,i)=>{ if(c.chart) discChart(document.getElementById("disc"+i), c.chart, L2); });
@@ -3042,7 +2994,7 @@ function renderCfgChanges(){
   const el=document.getElementById("ccList"); if(!el) return;
   const rows=(CC||[]).slice(-10).reverse();
   if(!rows.length){ el.innerHTML='<div class="note" style="margin:0">'+esc(t("cc_none"))+'</div>'; return; }
-  const when=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"})+" "+clock(ep);
+  const when=ep=>dmon(ep)+" "+clock(ep);
   el.innerHTML='<table class="tbl">'+rows.map(r=>`<tr><td style="white-space:nowrap">${esc(when(r.time))}</td><td>${esc(t("cc_row",{n:ccName(r.field),a:ccNum(r.old),b:ccNum(r.new)}))}</td></tr>`).join("")+'</table>';
 }
 // ash plate: seconds per timed turn over time (dots), usual value (dashed), boiler's give-up limit (15 s)
@@ -3051,8 +3003,7 @@ function renderAshTurns(){
   const cv=document.getElementById("cAshTurn"), nowEl=document.getElementById("atNow"); if(!cv) return;
   const h=(ASH&&ASH.turn_hist)||[];
   if(!h.length){ nowEl.textContent=""; placeholder(cv,t("at_none"),""); return; }
-  const med=a=>{ const b=a.slice().sort((x,y)=>x-y); return b.length?b[Math.floor(b.length/2)]:null; };
-  const secs=h.map(r=>r[1]), usual=med(secs.slice(0,Math.max(1,secs.length-10))), recent=med(secs.slice(-10));
+  const secs=h.map(r=>r[1]), usual=median(secs.slice(0,Math.max(1,secs.length-10))), recent=median(secs.slice(-10));
   const slow=ASH.problem&&ASH.problem.kind==="slow_turns";
   nowEl.textContent=slow?t("at_slow",{s:fmt(recent,0),m:fmt(usual,0)}):t("at_now",{s:fmt(secs[secs.length-1],1),m:fmt(usual,0),n:h.length});
   nowEl.style.color=slow?"var(--warn)":"";
@@ -3066,19 +3017,18 @@ function renderAshTurns(){
   c.setLineDash([]);
   c.fillStyle=getCss("--fan"); h.forEach(([e,s])=>{ c.beginPath(); c.arc(X(e),Y(s),3,0,Math.PI*2); c.fill(); });
   c.fillStyle="#5a6472"; c.textAlign="left";
-  const d=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"});
-  c.fillText(d(ta),x0,H-6); c.textAlign="right"; c.fillText(d(tb),x1,H-6);
+  c.fillText(dmon(ta),x0,H-6); c.textAlign="right"; c.fillText(dmon(tb),x1,H-6);
 }
 function renderStock(s){
   const L=document.getElementById("stLeft"); if(!L) return;
   if(!s){ L.textContent="—"; document.getElementById("stSub").textContent=t("st_none");
     document.getElementById("stDays").textContent=""; document.getElementById("stBuy").textContent=""; return; }
   L.innerHTML=fmt(s.left,0)+' <span style="font-size:16px;font-weight:400">kg</span>';
-  document.getElementById("stSub").textContent=t("st_sub",{kg:fmt(s.kg_set,0),d:new Date(s.at*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"}),b:fmt(s.burned,0)});
+  document.getElementById("stSub").textContent=t("st_sub",{kg:fmt(s.kg_set,0),d:dmon(s.at),b:fmt(s.burned,0)});
   document.getElementById("stDays").textContent=s.days_left!=null?t("st_days",{n:s.days_left}):t("st_days_none");
   const late=s.buy_by!=null && s.buy_by<=Date.now()/1000+86400;
   const bb=document.getElementById("stBuy");
-  bb.textContent=s.buy_by!=null?(late?t("st_buy_now",{r:s.reserve_kg}):t("st_buy",{d:new Date(s.buy_by*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"}),r:s.reserve_kg,p:fmt(s.per_day,1)})):"";
+  bb.textContent=s.buy_by!=null?(late?t("st_buy_now",{r:s.reserve_kg}):t(s.buy_by_src==="weather"?"st_buy_wx":"st_buy",{d:dmon(s.buy_by),r:s.reserve_kg,p:fmt(s.per_day,1)})):"";
   bb.style.color=late?"var(--warn)":"";
 }
 async function askKg(text){
@@ -3263,7 +3213,7 @@ function start(){
     if(e.target.checked && !(await askConfirm(t("wm_confirm")))) e.target.checked=false;
     wmDirty=true; wmShowValues(LASTWM); };
   document.getElementById("wmBoard").onchange=()=>{ wmDirty=true; wmShowValues(LASTWM); };
-  ["wmStop","wmAfter","wmPause","wmBoosts","wmMinC","wmRestart","wmPump"].forEach(id=>document.getElementById(id).oninput=()=>{wmDirty=true; if(id==="wmAfter") wmHelp(); if(id==="wmMinC") wmMinCUnit();});
+  ["wmStop","wmAfter","wmPause","wmBoosts","wmMinC","wmRestart"].forEach(id=>document.getElementById(id).oninput=()=>{wmDirty=true; if(id==="wmAfter") wmHelp(); if(id==="wmMinC") wmMinCUnit();});
   document.getElementById("wmSave").onclick=()=>{ if(WM) saveWarm(); };
   // optimiser tab
   document.getElementById("luxField").onchange=async e=>{

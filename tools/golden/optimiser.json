@@ -233,7 +233,7 @@
 ],
 "last_clean":null,
 "sensor_at":null,
-"status":"ok"
+"status":"learning"
 },
 "lux":{
 "bands":{

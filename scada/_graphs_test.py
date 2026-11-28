@@ -83,7 +83,7 @@ check("B: day rows without days: too few; the weather row learning", rw["power_f
 check("B: the dot strip has the starts that lit, grey before and orange after",
       sum(1 for d in c["dots"] if d[2] == 0) == 9 and sum(1 for d in c["dots"] if d[2] == 1) == 11)
 few = F.change_help(before + after[:3], [], now=after[2]["epoch"] + H)["changes"][0]
-check("B: 3 starts since the change: too few to say (3 of 5)", few["head"] == {"k": "few", "n": 3, "need": 5}
+check("B: 3 starts since the change: too few to say (3 of 8)", few["head"] == {"k": "few", "n": 3, "need": 8}
       and all(r["v"] in ("few", "learning") for r in few["rows"]), few["head"])
 same = F.change_help([start(i, flame=5 + jit(), cfg={"014": 40 if i < 8 else 30}) for i in range(16)], [], now=T0 + 20 * 12 * H)
 check("B: the same flame time on both sides -> the same", same["changes"][0]["head"]["k"] == "same", same["changes"][0]["head"])
@@ -96,8 +96,47 @@ check("B: a batch that differs inside the window (not one of the changes): no ve
 fails = [start(i) for i in range(8)] + [start(i, res="failed" if i % 2 else "ok", cfg={"014": 30, "017": 800}) for i in range(8, 16)]
 fr = {r["k"]: r for r in F.change_help(fails, [], now=T0 + 20 * 12 * H)["changes"][0]["rows"]}["failed"]
 check("B: 4 of 8 starts failed after, 0 of 8 before -> worse", fr["v"] == "worse" and fr["after"] == 4, fr)
-check("B: rate rule needs 2 failures on the bad side", F.ch_judge_rate(0, 8, 1, 5) == "same" and F.ch_judge_rate(2, 8, 0, 8) == "better")
-check("B: IQR overlap -> the same even with other medians", F.ch_judge([4, 5, 6, 7, 8], [3, 4, 5, 6, 7], "flame") == "same")
+check("B: rate rule: 30 points apart, 3 more on the bad side and Fisher p < 0.1",
+      F.ch_judge_rate(0, 8, 2, 8) == "same" and F.ch_judge_rate(0, 8, 3, 8) == "same" and F.ch_judge_rate(0, 8, 4, 8) == "worse"
+      and F.ch_judge_rate(4, 8, 0, 8) == "better" and F.ch_judge_rate(4, 20, 4, 8) == "same" and F.ch_judge_rate(0, 7, 4, 8) == "few")
+check("B: IQR overlap -> the same even with other medians",
+      F.ch_judge([4, 5, 6, 7, 8, 5, 6, 7], [3, 4, 5, 6, 7, 4, 5, 6], "flame") == "same")
+# a change that did nothing, many times (fixed seed): time to flame must give "better" / "worse" under 5 % of the time
+rnd = random.Random(7)
+for sd in (0.5, 1.5, 3.0):
+    n = 2000
+    false = sum(F.ch_judge([max(0.3, rnd.gauss(5, sd)) for _ in range(F.CH_NEED)],
+                           [max(0.3, rnd.gauss(5, sd)) for _ in range(F.CH_NEED)], "flame") != "same" for _ in range(n)) / n
+    check(f"B: no-effect change, {F.CH_NEED} v {F.CH_NEED} starts, spread {sd} min: false verdict under 5 % ({false:.1%})", false < 0.05)
+false = 0
+for _ in range(2000):
+    kb, ka = (sum(rnd.random() < 0.3 for _ in range(F.CH_NEED)) for _ in range(2))
+    false += F.ch_judge_rate(kb, F.CH_NEED, ka, F.CH_NEED) != "same"
+check(f"B: no-effect change, failed starts at 30 %: false verdict under 8 % ({false / 2000:.1%})", false / 2000 < 0.08)
+# more starts did not light: the headline never says "Yes"
+mx = [start(i, flame=5.0 + jit()) for i in range(10)] + [start(i, flame=3.8 + jit(), cfg={"014": 30, "017": 800},
+      **({"res": "failed"} if i % 3 == 0 else {})) for i in range(10, 25)]
+nmx = mx[-1]["epoch"] + H
+hm = F.change_help(mx, [], now=nmx)["changes"][0]["head"]
+check("B: flame sooner but more starts did not light -> mixed, not better", hm["k"] == "mixed" and hm["a"] >= 4, hm)
+mx2 = [dict(r, flame_s=round(5.0 * 60)) if r.get("result") == "ok" else r for r in mx]
+hm2 = F.change_help(mx2, [], now=nmx)["changes"][0]["head"]
+check("B: same flame time but more starts did not light -> worse (failed)", hm2["k"] == "failed", hm2)
+check("B: the phone says it too", "did not light" in F.phone_lines({"changes": [{"t": now, "head": hm}]}, None, "en", now=now)[0])
+# batch names that differ only in case or spaces: no new batch (a delivery of the same pellets)
+cp = F.change_points(R, (), [{"name": "Wood Pellets A", "since": T0 - 99}, {"name": "wood  pellets a", "since": T0 + 4 * 12 * H},
+                             {"name": "Other", "since": T0 + 15 * 12 * H}])
+check("A: a batch typed again in other case is no change; a real new batch is",
+      [p["name"] for c in cp for p in c["parts"] if p["k"] == "batch"] == ["Wood Pellets A", "Other"], cp)
+bk = [dict(r, batch="Wood Pellets A" if j % 2 else "wood pellets a") for j, r in enumerate(recs)]
+check("B: batch names in other case inside the window are one batch (a verdict)",
+      F.change_help(bk, [], now=now)["changes"][0]["head"]["k"] == "better")
+# a setting not sent (None) is never a change
+RN = [start(i) for i in range(5)] + [start(i, cfg={"014": None, "017": 800}) for i in range(5, 8)] + [start(i, cfg={"014": 40, "017": 800}) for i in range(8, 12)]
+check("A: a value of None is no change (no 40 -> None, no None -> 40)", F.change_points(RN) == [], F.change_points(RN))
+RN2 = RN[:8] + [start(i, cfg={"014": 30, "017": 800}) for i in range(8, 12)]
+cpn = F.change_points(RN2)
+check("A: after a None the value before it is compared (40 -> 30)", len(cpn) == 1 and cpn[0]["parts"][0]["old"] == 40, cpn)
 
 
 def dayrec(day, flame90=None, runs=(60, 70)):
@@ -106,10 +145,15 @@ def dayrec(day, flame90=None, runs=(60, 70)):
 
 cday = datetime.date.fromtimestamp(after[0]["epoch"]).isoformat()
 dd = lambda k: (datetime.date.fromisoformat(cday) + datetime.timedelta(days=k)).isoformat()
-days = [dayrec(dd(-k), 140 + k % 3, (20, 25, 80)) for k in range(1, 7)] + [dayrec(dd(k), 155 + k % 3) for k in range(1, 7)]
-rw = {r["k"]: r for r in F.change_help(recs, days, now=now)["changes"][0]["rows"]}
+days = [dayrec(dd(-k), 140 + k % 3, (20, 25, 80)) for k in range(1, 10)] + [dayrec(dd(k), 155 + k % 3) for k in range(1, 10)]
+rw = {r["k"]: r for r in F.change_help(recs, days, now=now + 4 * 86400)["changes"][0]["rows"]}
 check("B: flame at full power (days) higher after -> better; fewer short burns -> better",
-      rw["power_flame"]["v"] == "better" and rw["short"]["v"] == "better" and rw["short"]["before"] == 12, rw)
+      rw["power_flame"]["v"] == "better" and rw["short"]["v"] == "better" and rw["short"]["before"] == 18, rw)
+# the day rows stop at the neighbouring change: its day is not counted on either side
+prev_t = datetime.datetime.fromisoformat(dd(-3) + "T15:00").timestamp()
+cc = F.change_compare({"t": after[0]["epoch"] - 1, "parts": []}, prev_t, None, recs, days, now=now)
+rw2 = {r["k"]: r for r in cc["rows"]}
+check("B: day rows: before = only the whole days after the change before (dd-2, dd-1)", rw2["power_flame"]["nb"] == 2, rw2["power_flame"])
 
 # ---------------------------------------------------------------- C: 06:00-06:00 days
 
@@ -177,8 +221,20 @@ check("D: a clean made-up house is learned: slope near 0.6, base near 3, at 0 °
       wx["learned"] and abs(wx["b"] - 0.6) < 0.08 and abs(wx["a"] - 3.0) < 1.0 and abs(wx["at0"] - 12.6) < 0.8, wx)
 short = [dict(s, state_s={"4": 20 * 3600}) for s in sums]
 check("D: days with under 23 h recorded do not count", F.weather_fit(short, wd)["n"] == 0)
-idle = [dict(s, running_s=0, early=dict(s["early"], run_s=0)) for s in sums]
-check("D: days without burning do not count", F.weather_fit(idle, wd)["n"] == 0)
+idle = [dict(s, running_s=0, fuel_est_kg=0, early=dict(s["early"], run_s=0, kg=0)) for s in sums]
+wi = F.weather_fit(idle, wd)
+check("D: whole days without burning count, with 0 kg (mild days set the base)", wi["n"] == len(sums) - 1
+      and all(p[2] == 0 for p in wi["pts"]), wi["n"])
+silo = [dict(s, fuel_silo_kg=round(s["fuel_est_kg"] * 1.25)) for s in sums]
+ws = F.weather_fit(silo, wd)
+check("D: kg as the rest of the page (day_fuel: the silo counter where it moved), split at 06:00 by the estimate",
+      abs(sum(p[2] for p in ws["pts"]) / sum(p[2] for p in wx["pts"]) - 1.25) < 0.03, (ws["pts"][:2], wx["pts"][:2]))
+check("D: 0 °C inside the learned days: the reference is 0 °C", wx["ref_c"] == 0 and wx["t_lo"] <= 0 <= wx["t_hi"])
+sw_, wdw = house(30, temps=[t / 1.0 for t in range(3, 13)], noise=0.2)
+ww = F.weather_fit(sw_, wdw)
+check("D: all learned days above 0 °C: no 'at 0 °C', the nearest learned temperature instead",
+      ww["learned"] and ww["ref_c"] == 4 and abs(ww["at0"] - F.wx_kg(ww, 4)) < 0.1, (ww.get("ref_c"), ww.get("t_lo")))
+check("D: under 21 days the line is young (early)", wx["early"] is False and F.weather_fit(sums[:20], wd).get("early") in (True, None))
 mid = datetime.datetime.fromisoformat(sums[20]["day"] + "T12:00").timestamp()
 wx2 = F.weather_fit(sums, wd, plan_since=mid)
 check("D: a heating plan change starts a new fit (only days after it)", not wx2["learned"] and wx2["n"] < 14, wx2["n"])
@@ -195,14 +251,23 @@ today = datetime.date.fromtimestamp(T0).isoformat()
 fc = [[(datetime.date.fromtimestamp(T0) + datetime.timedelta(days=i)).isoformat(), 0.0] for i in range(8)]
 w = F.wx_forecast(dict(wx), fc, {"left": 300, "reserve_kg": 150}, now=T0)
 per = F.wx_kg(wx, 0.0)
-check("D: next 7 days = 7 x the line at 0 °C", len(w["fc"]) == 7 and abs(w["fc_kg"] - 7 * per) <= 1, (w["fc_kg"], per))
+check("D: next 7 days = 7 x the line at 0 °C", len(w["fc"]) == 7 and w["fc_n"] == 7 and abs(w["fc_kg"] - 7 * per) <= 1, (w["fc_kg"], per))
+w5 = F.wx_forecast(dict(wx), fc[:6], None, now=T0)
+check("D: a forecast of 5 days says 5 days", w5["fc_n"] == 5 and F.phone_lines(None, w5, "en", now=T0)[0].startswith("Next 5 days"))
+check("D: the weather's buy-by date only from 21 days and a forecast inside the learned temperatures",
+      F.wx_use_buy(w) and not F.wx_use_buy(dict(w, n=20))
+      and not F.wx_use_buy(F.wx_forecast(dict(wx), [[d, -20.0] for d, _ in fc], {"left": 300, "reserve_kg": 150}, now=T0)))
 check("D: pellets last to about left / kg a day", abs(w["last_to"] - (T0 + 300 / per * 86400)) < 86400 * 0.6, (w["last_to"] - T0) / 86400)
 check("D: buy by = when the reserve is reached (earlier)", w["buy_by"] < w["last_to"])
 check("D: not learned -> no forecast", "fc" not in F.wx_forecast(dict(wx2), fc, None, now=T0))
 
 # ---------------------------------------------------------------- E: the forecast answer (no internet) and phone lines
-ans = {"current": {"temperature_2m": 1.5}, "hourly": {"time": [], "temperature_2m": []},
-       "daily": {"time": [int(datetime.datetime.fromisoformat(d).timestamp()) for d, _ in fc[:8]],
+# Open-Meteo's daily unixtime is local midnight of the PLACE, sent in UTC, with utc_offset_seconds. The made-up place
+# is 10 h ahead of UTC (not the test PC's zone), so reading the times in the PC's own zone would give the wrong days
+OFF = 10 * 3600
+pmid = lambda d: int((datetime.datetime.fromisoformat(str(d)) - datetime.datetime(1970, 1, 1)).total_seconds()) - OFF
+ans = {"current": {"temperature_2m": 1.5}, "hourly": {"time": [], "temperature_2m": []}, "utc_offset_seconds": OFF,
+       "daily": {"time": [pmid(d) for d, _ in fc[:8]],
                  "temperature_2m_mean": [1.0, None, -2.5, 3, "x", 4, 5, 6]}}
 got = F.parse_forecast(ans, today=today)
 check("E: forecast parsed: days from today, empty and broken values skipped",
@@ -212,7 +277,7 @@ wst = F.Settings(wd_dir, lambda m: None)
 wst.update({"weather": {"enabled": True, "name": "Example", "lat": 55.0, "lon": 10.0}})
 W = F.Weather(wst, wd_dir, lambda m: None)
 asked = []
-now_days = [int(datetime.datetime.combine(datetime.date.today() + datetime.timedelta(days=i), datetime.time()).timestamp()) for i in range(8)]
+now_days = [pmid(datetime.date.today() + datetime.timedelta(days=i)) for i in range(8)]
 ans2 = dict(ans, daily=dict(ans["daily"], time=now_days))
 W._get = lambda url, params, timeout=15: asked.append(params) or ans2
 W.fetch(55.0, 10.0)
@@ -283,6 +348,20 @@ if sync_playwright:
             check(f"{tag} /home Pellets: learning n of 14 days, the flat average", ("6 of 14" in g3["wx"] or "6 af 14" in g3["wx"])
                   and g3["bars"] == 0, g3["wx"])
             check(f"{tag} fits the screen", not g["wide"] and not g2["wide"] and not g3["wide"])
+            yday = pg.evaluate("(()=>{ const y=new Date(); y.setDate(y.getDate()-1); return y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0'); })()")
+            ydx = dict(WXL, pts=[list(p) for p in WXL["pts"]])
+            ydx["pts"][-1][0] = yday                   # the page's own yesterday (a replay may run on another clock)
+            pg.evaluate(SET, {"ch": json.loads(CH), "wx": ydx})
+            yd = pg.evaluate("document.querySelector('#wxHelp .wxYd')&&document.querySelector('#wxHelp .wxYd').textContent")
+            check(f"{tag} the newest dot is labelled yesterday when it is yesterday", yd == ("yesterday" if lang == "en" else "i går"), yd)
+            old = dict(WXL, pts=[list(p) for p in WXL["pts"]])
+            old["pts"][-1][0] = "2000-01-20"
+            pg.evaluate(SET, {"ch": json.loads(CH), "wx": old})
+            yd = pg.evaluate("document.querySelector('#wxHelp .wxYd').textContent")
+            check(f"{tag} ... and with its date when it is not", yd in ("20 Jan", "20. jan"), yd)
+            dd_ = pg.evaluate("[dmon(1764288000), healthHead([{st:'ok'},{st:'learn'}]).cls, healthHead([{st:'ok'},{st:'ok'}]).cls]")
+            check(f"{tag} one full stop after a Danish date; 'Still learning' while a row learns", not dd_[0].endswith(".")
+                  and dd_[1:] == ["learn", "ok"], dd_)
             ctx.close()
         for lang in ("en", "da"):
             ctx = br.new_context(viewport={"width": 1280, "height": 900}, locale="en-GB" if lang == "en" else "da-DK")

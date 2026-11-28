@@ -184,15 +184,11 @@
 "start":"16:00"
 }
 ],
-"pump_c":50,
 "retry_wait_s":90,
 "start_window_min":30,
 "stop_after_min":2,
 "stop_pct":40,
 "use_board":true,
-"warm_k":1.8,
-"warm_k1":0.8,
-"warm_k2":1.5,
 "warm_learn":[]
 },
 "warmstate":{
@@ -269,7 +265,6 @@
 }
 ],
 "plan":[],
-"pump_c":50,
 "rest_since":null,
 "source":"board",
 "start_window_min":30,

@@ -21,6 +21,25 @@ const axisDec=st=>st<0.1?2:(Math.abs(st-Math.round(st))>1e-9?1:0);
 const api=(path,body)=>fetch(path, body===undefined?{cache:"no-cache"}:
   {method:"POST",headers:{"Content-Type":"application/json","X-Burner":"1"},body:JSON.stringify(body)})
   .then(r=>r.json().then(j=>({ok:r.ok,j})));
+// a day and month, "28 Nov" / "28. nov" (Danish without the month's own full stop, so a sentence that ends with a
+// date gets one full stop); "—" when there is none
+const dmon=ep=>ep?new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"}).replace(/\.$/,""):"—";
+// a chart's width: the element's own, at least 260 px (def = before it is laid out)
+const grW=(el,def)=>Math.max(260,Math.round((el&&el.clientWidth)||def||600));
+// a typed number: plain digits with one . or , only (not "0x10", "1e3", "+5"); anything else -> NaN
+const numTyped=s=>{ s=String(s==null?"":s).trim().replace(",","."); return /^-?\d+(\.\d+)?$/.test(s)?Number(s):NaN; };
+// why a poll got no data: this device offline / no reply at all (network error, timeout) / the monitor answered with an error
+const noAnswerKey=e=>navigator.onLine===false?"nodata_net":(e&&e.name&&e.name!=="SyntaxError")?"nodata_noreply":"nodata_resp";
+// who / what started or stopped it: the event's `source` in the server's words. src = labels.sources of /status.json
+const srcText=(e,src)=>{ if(!e||!e.source) return ""; const w=c=>{ const x=(src||{})[c]; return x?(x[LANG]||x.en||""):""; }, s=w(e.source);
+  return s&&e.after_alarm?s+", "+w("after_alarm"):s; };
+// "Started by: heating plan" / "Stopped by: ..." (tt = the page's text function)
+const srcLine=(e,src,tt)=>{ const s=srcText(e,src); if(!s) return ""; const to=+e.to, fr=+e.from;
+  return (to===2||to===3)?tt("started_by")+": "+s:(fr!==6&&(to===0||to===1||to===5))?tt("stopped_by")+": "+s:(fr===6&&to===0)?tt("reset_by")+": "+s:s; };
+// the source of a command ("warm mode (low power)", "web", "phone start" ...) in the page's words: the same prefixes
+// as burner_ext.source_of, anything else is a remote command
+const CMD_SRC=[["warm","plan"],["schedule","schedule"],["auto_reset","auto_reset"],["mqtt","mqtt"],["web","web"],["phone","phone"]];
+const cmdSrc=(s,src)=>{ s=String(s||""); const k=CMD_SRC.find(p=>s.startsWith(p[0])); return srcText({source:k?k[1]:"remote"},src)||s; };
 
 // ---- Lighting help ("Trouble lighting?"), the same card on both pages. READ ONLY: it shows what the server worked
 // out from the settings the boiler sent and from the start records (api/ignitions "help"). It never sends anything.
@@ -239,7 +258,7 @@ const rsOutcome=o=>bhT("rs_"+(o||"null"));
 function rescText(p){
   const last=(p&&p.last)||[], n=(p&&p.n)||0;
   if(n===1&&last.length) return bhT("rs_one",{w:bhWhen(last[0][0]),o:rsOutcome(last[0][1])})+" "+bhT("rs_advice");
-  const from=p&&p.from?new Date(p.from+"T12:00").toLocaleDateString(LOC(),{day:"numeric",month:"short"}):"—";
+  const from=p&&p.from?dmon(new Date(p.from+"T12:00").getTime()/1000):"—";
   return bhT("rs_many",{n,d:(p&&p.days)||"?",from})+" "+last.map(x=>bhWhen(x[0])+" ("+rsOutcome(x[1])+")").join("; ")+". "+bhT("rs_advice");
 }
 // the list of times for the Burner health detail. c = the page's colours {warn, dim, line}
@@ -422,6 +441,7 @@ const GR_TXT={
  en:{ch_h:"Did the change help?", ch_sub:"Each dot is one lighting · the same boiler, before and after",
   ch_better:"Yes: the flame now comes {d} min sooner", ch_worse:"No: the flame now comes {d} min later",
   ch_same:"No clear change in time to flame", ch_few:"Too few starts since the change to say ({n} of {need})",
+  ch_mixed:"Mixed: the flame comes {d} min sooner, but {a} of {na} starts did not light", ch_failed:"Worse: {a} of {na} starts did not light",
   ch_few_before:"Too few starts before the change to compare", ch_batch:"The pellet batch changed too, so it cannot say",
   ch_what:"Changed {d}: {p}.", ch_n:"{b} starts before, {a} after.", ch_many:"Several things changed at once: the graph cannot tell which one did it.",
   ch_batch_note:"A new pellet batch lights differently, so a settings change cannot be judged across it.",
@@ -430,23 +450,24 @@ const GR_TXT={
   ch_ax:"minutes to flame", ch_mark:"changed", ch_usual:"usual {a} min",
   c_m:"", c_b:"Before", c_a:"After", c_v:"Verdict",
   r_flame:"Time to flame", r_full:"Time to full heat", r_failed:"Starts that did not light", r_power_flame:"Flame at full power",
-  r_short:"Short burns (under 30 min)", r_wx:"Pellets against the weather", of:"{a} of {n}", u_wx:"{a} kg at 0 °C",
+  r_short:"Short burns (under 30 min)", r_wx:"Pellets against the weather", of:"{a} of {n}", u_wx:"{a} kg at {t} °C",
   v_better:"better", v_worse:"worse", v_same:"the same", v_few:"too few to say", v_batch:"no verdict (new pellets)",
   v_learning:"learning: {n} of {need} days",
-  ch_how:"Better or worse only with at least {need} starts (or days) on each side, when the middle halves of the two sides do not overlap. Medians, so one odd start does not decide it.",
+  ch_how:"Better or worse only with at least {need} starts (or days) on each side, when the middle halves of the two sides do not overlap. Medians, so one odd start does not decide it. Starts that did not light and short burns: at least 30 points apart and 3 more.",
   wx_h:"Pellets and the weather", wx_sub:"Each dot is one full day (06:00 to 06:00) · the line is your house",
   wx_learn:"Learning: {n} of {need} days", wx_spread:"Learning: the days so far had too alike weather ({s} °C apart, needs {need} °C).",
   wx_fit:"Learning: the days do not follow the weather clearly enough yet.", wx_flat:"Until then: about {a} kg a day on average.",
   wx_off:"Needs the outside temperature: Settings → Outside temperature.",
   wx_learn_how:"A day counts with at least 23 h recorded and some burning. A heating plan change starts again.",
-  wx_next:"Next 7 days: about {a} kg", wx_last:"Pellets at home last to about {d}.", wx_buy:"Buy by {d}.",
-  wx_at0:"At 0 °C about {a} kg a day", wx_yday:"yesterday",
+  wx_next:"Next {n} days: about {a} kg", wx_next_r:"Next {n} days: roughly {a} kg", wx_last:"Pellets at home last to about {d}.", wx_buy:"Buy by {d}.",
+  wx_at0:"At {t} °C about {a} kg a day", wx_yday:"yesterday", wx_young:"Still a young line: the buy-by date uses the plain average until {n} days are learned.",
   wx_ax_x:"outside, average of the day", wx_ax_y:"kg a day", wx_week:"The coming week",
   wx_week_note:"kg a day from the weather forecast · ±{a} kg over the week", wx_nofc:"No weather forecast yet.",
   wx_foot:"Learned from {n} days. Most days are within ±{b} kg of the line. Sun, wind and hot water use move single days."},
  da:{ch_h:"Hjalp ændringen?", ch_sub:"Hver prik er én optænding · samme kedel, før og efter",
   ch_better:"Ja: flammen kommer nu {d} min hurtigere", ch_worse:"Nej: flammen kommer nu {d} min senere",
   ch_same:"Ingen klar forskel i tid til flamme", ch_few:"For få starter siden ændringen til at sige noget ({n} af {need})",
+  ch_mixed:"Blandet: flammen kommer {d} min hurtigere, men {a} af {na} starter tændte ikke", ch_failed:"Værre: {a} af {na} starter tændte ikke",
   ch_few_before:"For få starter før ændringen til at sammenligne", ch_batch:"Pillepartiet skiftede også, så det kan ikke siges",
   ch_what:"Ændret {d}: {p}.", ch_n:"{b} starter før, {a} efter.", ch_many:"Flere ting blev ændret på én gang: grafen kan ikke sige, hvilken der gjorde det.",
   ch_batch_note:"Et nyt pilleparti tænder anderledes, så en ændret indstilling kan ikke bedømmes hen over det.",
@@ -455,23 +476,21 @@ const GR_TXT={
   ch_ax:"minutter til flamme", ch_mark:"ændret", ch_usual:"normalt {a} min",
   c_m:"", c_b:"Før", c_a:"Efter", c_v:"Dom",
   r_flame:"Tid til flamme", r_full:"Tid til fuld varme", r_failed:"Starter, der ikke tændte", r_power_flame:"Flamme ved fuld ydelse",
-  r_short:"Korte fyringer (under 30 min)", r_wx:"Piller i forhold til vejret", of:"{a} af {n}", u_wx:"{a} kg ved 0 °C",
+  r_short:"Korte fyringer (under 30 min)", r_wx:"Piller i forhold til vejret", of:"{a} af {n}", u_wx:"{a} kg ved {t} °C",
   v_better:"bedre", v_worse:"værre", v_same:"det samme", v_few:"for få til at sige", v_batch:"ingen dom (nye piller)",
   v_learning:"lærer: {n} af {need} dage",
-  ch_how:"Bedre eller værre kun med mindst {need} starter (eller dage) på hver side, når de midterste halvdele af de to sider ikke overlapper. Medianer, så én skæv start ikke afgør det.",
+  ch_how:"Bedre eller værre kun med mindst {need} starter (eller dage) på hver side, når de midterste halvdele af de to sider ikke overlapper. Medianer, så én skæv start ikke afgør det. Starter, der ikke tændte, og korte fyringer: mindst 30 procentpoint og 3 flere.",
   wx_h:"Piller og vejret", wx_sub:"Hver prik er ét helt døgn (06:00 til 06:00) · linjen er dit hus",
   wx_learn:"Lærer: {n} af {need} dage", wx_spread:"Lærer: dagene indtil nu havde for ens vejr ({s} °C imellem, skal være {need} °C).",
   wx_fit:"Lærer: dagene følger endnu ikke vejret tydeligt nok.", wx_flat:"Indtil da: ca. {a} kg om dagen i snit.",
   wx_off:"Kræver udetemperaturen: Indstillinger → Udetemperatur.",
   wx_learn_how:"Et døgn tæller med mindst 23 timers målinger og noget fyring. En ændret varmeplan starter forfra.",
-  wx_next:"De næste 7 dage: ca. {a} kg", wx_last:"Pillerne derhjemme rækker til ca. {d}.", wx_buy:"Køb senest {d}.",
-  wx_at0:"Ved 0 °C ca. {a} kg om dagen", wx_yday:"i går",
+  wx_next:"De næste {n} dage: ca. {a} kg", wx_next_r:"De næste {n} dage: omkring {a} kg", wx_last:"Pillerne derhjemme rækker til ca. {d}.", wx_buy:"Køb senest {d}.",
+  wx_at0:"Ved {t} °C ca. {a} kg om dagen", wx_yday:"i går", wx_young:"Linjen er stadig ung: købsdatoen bruger det almindelige gennemsnit, til {n} dage er lært.",
   wx_ax_x:"ude, døgnets gennemsnit", wx_ax_y:"kg om dagen", wx_week:"Den kommende uge",
   wx_week_note:"kg om dagen ud fra vejrudsigten · ±{a} kg over ugen", wx_nofc:"Ingen vejrudsigt endnu.",
   wx_foot:"Lært af {n} dage. De fleste dage ligger inden for ±{b} kg af linjen. Sol, vind og varmt vand flytter enkelte dage."}};
 const grT=(k,p)=>{ let s=(GR_TXT[LANG]||GR_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
-const grDay=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"});
-const grW=el=>Math.max(260,Math.round((el&&el.clientWidth)||600));
 // a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”", "Cleaned: burner, fan"
 const clParts=w=>(w||[]).map(x=>grT("cl_"+x)).join(", ");
 const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name})
@@ -484,12 +503,12 @@ function chDraw(el,ch,wx,c){
   if(!L.length){ el.innerHTML=""; return; }
   let i=L.findIndex(x=>x.t===CH_PICK); if(i<0) i=ch.pick||0;
   const C=L[i], h=C.head||{}, nb=C.rows[0].nb, na=C.rows[0].na;
-  const tone=h.k==="better"?[c.okBg,c.ok]:h.k==="worse"?[c.warnBg,c.warn]:[c.nBg,c.ink];
+  const tone=h.k==="better"?[c.okBg,c.ok]:h.k==="worse"||h.k==="mixed"||h.k==="failed"?[c.warnBg,c.warn]:[c.nBg,c.ink];
   const many=(C.parts||[]).length>1;
   const pick=L.length>1?`<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;color:${c.dim}">${esc(grT("ch_pick"))}
-    <select data-chpick style="font:inherit;font-size:14px;max-width:100%;min-width:0;flex:1 1 auto;padding:6px 8px;border-radius:10px;border:1px solid ${c.grid};background:${c.card};color:${c.ink}">${L.map((x,k)=>`<option value="${x.t}"${k===i?" selected":""}>${esc(grDay(x.t)+": "+chParts(x))}</option>`).join("")}</select></label>`:"";
+    <select data-chpick style="font:inherit;font-size:14px;max-width:100%;min-width:0;flex:1 1 auto;padding:6px 8px;border-radius:10px;border:1px solid ${c.grid};background:${c.card};color:${c.ink}">${L.map((x,k)=>`<option value="${x.t}"${k===i?" selected":""}>${esc(dmon(x.t)+": "+chParts(x))}</option>`).join("")}</select></label>`:"";
   const val=r=>{ if(r.k==="failed"||r.k==="short") return [grT("of",{a:r.before,n:r.nb}),grT("of",{a:r.after,n:r.na})];
-    if(r.k==="wx") return r.v==="learning"?["–","–"]:[r.before!=null?grT("u_wx",{a:fmt(r.before,1)}):"–",r.after!=null?grT("u_wx",{a:fmt(r.after,1)}):"–"];
+    if(r.k==="wx") return r.v==="learning"?["–","–"]:[r.before!=null?grT("u_wx",{a:fmt(r.before,1),t:r.ref_c||0}):"–",r.after!=null?grT("u_wx",{a:fmt(r.after,1),t:r.ref_c||0}):"–"];
     const u=r.k==="power_flame"?"":" min", d=r.k==="flame"?1:0; return [r.before!=null?fmt(r.before,d)+u:"–",r.after!=null?fmt(r.after,d)+u:"–"]; };
   const vcol={better:c.ok,worse:c.warn}, td=`padding:6px 8px 6px 0;border-top:1px solid ${c.grid};text-align:left;vertical-align:top`;
   const rows=C.rows.map(r=>{ const [b,a]=val(r), vt=r.v==="learning"?grT("v_learning",{n:r.n,need:r.need}):grT("v_"+r.v);
@@ -499,11 +518,11 @@ function chDraw(el,ch,wx,c){
     return `<div class="chRow" data-k="${r.k}" data-v="${r.v}" style="padding:7px 0;border-top:1px solid ${c.grid}"><b style="font-weight:600">${esc(grT("r_"+r.k))}</b><br>
       <span style="color:${c.dim}">${esc(grT("c_b"))}</span> ${esc(b)} <span style="color:${c.dim}">→ ${esc(grT("c_a"))}</span> <b>${esc(a)}</b> · <span style="color:${vcol[r.v]||c.dim}">${esc(vt)}</span></div>`; }).join("");
   el.innerHTML=`${c.head(grT("ch_h"),grT("ch_sub"))}${pick}
-    <div id="chHead" data-k="${esc(h.k)}" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${tone[0]}"><div style="font-size:17px;font-weight:650;color:${tone[1]}">${esc(grT("ch_"+h.k,{d:fmt(h.d,1),n:h.n,need:h.need}))}</div>
-      <div style="margin-top:4px;font-size:14px">${esc(grT("ch_what",{d:grDay(C.t),p:chParts(C)})+" "+grT("ch_n",{b:nb,a:na}))}${many?" "+esc(grT("ch_many")):""}${h.k==="batch"?" "+esc(grT("ch_batch_note")):""}</div></div>
+    <div id="chHead" data-k="${esc(h.k)}" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${tone[0]}"><div style="font-size:17px;font-weight:650;color:${tone[1]}">${esc(grT("ch_"+h.k,{d:fmt(h.d,1),n:h.n,need:h.need,a:h.a,na:h.na}))}</div>
+      <div style="margin-top:4px;font-size:14px">${esc(grT("ch_what",{d:dmon(C.t),p:chParts(C)})+" "+grT("ch_n",{b:nb,a:na}))}${many?" "+esc(grT("ch_many")):""}${h.k==="batch"?" "+esc(grT("ch_batch_note")):""}</div></div>
     <div id="chStrip" style="margin-top:12px"></div>
     ${narrow?`<div style="margin-top:8px;font-size:14px">${rowsN}</div>`:`<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px"><tr>${["c_m","c_b","c_a","c_v"].map(k=>`<th style="${td};border-top:0;color:${c.dim};font-weight:600">${esc(grT(k))}</th>`).join("")}</tr>${rows}</table>`}
-    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${C.band?esc(grT("ch_band",{a:fmt(C.band[0],0),b:fmt(C.band[1],0),n:C.left_out}))+" ":""}${esc(grT("ch_how",{need:ch.need||5}))}</p>`;
+    <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${C.band?esc(grT("ch_band",{a:fmt(C.band[0],0),b:fmt(C.band[1],0),n:C.left_out}))+" ":""}${esc(grT("ch_how",{need:ch.need||8}))}</p>`;
   chStrip(el.querySelector("#chStrip"),C,c);
 }
 // the dot strip: minutes to flame over time, grey before and orange after the dashed line, the middle half as a band
@@ -519,10 +538,10 @@ function chStrip(el,C,c){
     if(med!=null) s+=`<line x1="${xa.toFixed(1)}" x2="${xb.toFixed(1)}" y1="${Y(med).toFixed(1)}" y2="${Y(med).toFixed(1)}" style="stroke:${col}" stroke-width="2.5"/>`; };
   side(fr.qb,fr.before,t0,C.t,c.before); side(fr.qa,fr.after,C.t,t1,c.after);
   s+=`<line x1="${xm.toFixed(1)}" x2="${xm.toFixed(1)}" y1="${y0-10}" y2="${y1}" style="stroke:${c.ink}" stroke-dasharray="4 4"/><text x="${(xm+(xm>x1-70?-4:4)).toFixed(1)}" y="${y0-12}" font-size="11" font-weight="650" style="fill:${c.ink}"${xm>x1-70?' text-anchor="end"':""}>${esc(grT("ch_mark"))}</text>`;
-  D.forEach(d=>{ s+=`<circle class="chDot" cx="${X(d[0]).toFixed(1)}" cy="${Y(d[1]).toFixed(1)}" r="4.5" style="fill:${d[2]?c.after:c.before};stroke:${c.card}" stroke-width="1.2"><title>${esc(grDay(d[0])+" "+clock(d[0])+" · "+fmt(d[1],1)+" min")}</title></circle>`; });
+  D.forEach(d=>{ s+=`<circle class="chDot" cx="${X(d[0]).toFixed(1)}" cy="${Y(d[1]).toFixed(1)}" r="4.5" style="fill:${d[2]?c.after:c.before};stroke:${c.card}" stroke-width="1.2"><title>${esc(dmon(d[0])+" "+clock(d[0])+" · "+fmt(d[1],1)+" min")}</title></circle>`; });
   if(fr.before!=null) s+=`<text x="${x0+4}" y="${(Y(fr.before)-9).toFixed(1)}" font-size="11" style="fill:${c.dim}">${esc(grT("ch_usual",{a:fmt(fr.before,1)}))}</text>`;
   if(fr.after!=null) s+=`<text x="${x1}" y="${(Y(fr.after)+17).toFixed(1)}" text-anchor="end" font-size="11" font-weight="650" style="fill:${c.after}">${esc(grT("ch_usual",{a:fmt(fr.after,1)}))}</text>`;
-  s+=`<text x="${x0}" y="${H-10}" font-size="11" style="fill:${c.dim}">${esc(grDay(t0))}</text><text x="${x1}" y="${H-10}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(grDay(t1))}</text>`;
+  s+=`<text x="${x0}" y="${H-10}" font-size="11" style="fill:${c.dim}">${esc(dmon(t0))}</text><text x="${x1}" y="${H-10}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(dmon(t1))}</text>`;
   s+=`<text x="0" y="10" font-size="11" style="fill:${c.dim}">${esc(grT("ch_ax"))}</text>`;
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%" role="img" aria-label="${esc(grT("ch_h"))}">${s}</svg>`;
 }
@@ -542,30 +561,37 @@ function pwDraw(el,wx,stock,c,on){
       ${why?`<p style="margin:6px 0 0">${esc(why)}</p>`:""}${wx.flat!=null?`<p style="margin:6px 0 0">${esc(grT("wx_flat",{a:fmt(wx.flat,1)}))}</p>`:""}
       <p style="margin:6px 0 0;color:${c.dim};font-size:13px">${esc(on===false&&!wx.n?grT("wx_off"):grT("wx_learn_how"))}</p>`;
     return; }
-  const fc=wx.fc||[], last=stock&&wx.last_to?grT("wx_last",{d:grDay(wx.last_to)}):"", buy=stock&&stock.buy_by_src==="weather"&&stock.buy_by?grT("wx_buy",{d:grDay(stock.buy_by)}):"";
-  const big=fc.length?grT("wx_next",{a:fmt(wx.fc_kg,0)}):grT("wx_at0",{a:fmt(wx.at0,1)});
-  el.innerHTML=`${head}<div id="wxTop" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${c.accBg}"><div style="font-size:17px;font-weight:650;color:${c.acc}">${esc(big)}</div>${last||buy?`<div style="margin-top:4px;font-size:14px">${esc((last+" "+buy).trim())}</div>`:""}</div>
+  // one buy-by date: the weather's dates only when the pellet card uses them too (stock.buy_by_src, the server decides)
+  const useWx=!!(stock&&stock.buy_by_src==="weather"&&stock.buy_by), fc=wx.fc||[];
+  const last=useWx&&wx.last_to?grT("wx_last",{d:dmon(wx.last_to)}):"", buy=useWx?grT("wx_buy",{d:dmon(stock.buy_by)}):"";
+  const young=stock&&stock.buy_by&&!useWx&&wx.n<21?grT("wx_young",{n:21}):"";
+  const big=fc.length?grT(wx.early?"wx_next_r":"wx_next",{a:fmt(wx.fc_kg,0),n:wx.fc_n||fc.length}):grT("wx_at0",{a:fmt(wx.at0,1),t:wx.ref_c||0});
+  el.innerHTML=`${head}<div id="wxTop" style="margin-top:12px;padding:12px 14px;border-radius:14px;background:${c.accBg}"><div style="font-size:17px;font-weight:650;color:${c.acc}">${esc(big)}</div>${last||buy||young?`<div style="margin-top:4px;font-size:14px">${esc((last+" "+buy+" "+young).trim())}</div>`:""}</div>
     <div style="display:flex;flex-wrap:wrap;gap:20px;margin-top:12px"><div id="wxSc" style="flex:1 1 300px;min-width:0"></div><div id="wxFc" style="flex:1 1 240px;min-width:0"></div></div>
     <p style="margin:8px 0 0;color:${c.dim};font-size:13px">${esc(grT("wx_foot",{n:wx.n,b:fmt(wx.band,1)}))}</p>`;
   pwScatter(el.querySelector("#wxSc"),wx,c); pwWeek(el.querySelector("#wxFc"),wx,c);
 }
 const pwKg=(wx,t)=>Math.max(0,wx.a+wx.b*Math.max(0,wx.base_c-t));
 function pwScatter(el,wx,c){
-  const P=wx.pts||[], W=grW(el), H=240, x0=34, x1=W-8, y0=26, y1=200;
+  const P=wx.pts||[], W=grW(el), H=240, x0=34, x1=W-8, y0=26, y1=200, band=wx.band*(wx.early?1.5:1);   // a young line: a wider band
   const [ta,tb,ts]=niceAxis(Math.min(-5,...P.map(p=>p[1])),Math.max(wx.base_c+2,...P.map(p=>p[1]))), X=t=>x0+(x1-x0)*(t-ta)/(tb-ta);
-  const [,ky,kst]=niceAxis(0,Math.max(pwKg(wx,ta)+wx.band,...P.map(p=>p[2]))*1.05,true), Y=v=>y1-(y1-y0)*Math.max(0,v)/ky;
+  const [,ky,kst]=niceAxis(0,Math.max(pwKg(wx,ta)+band,...P.map(p=>p[2]))*1.05,true), Y=v=>y1-(y1-y0)*Math.max(0,v)/ky;
   let s="";
   for(let g=0;g<=4;g++){ const v=kst*g, y=Y(v); s+=`<line x1="${x0}" x2="${x1}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" style="stroke:${c.grid}"/><text x="${x0-5}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" style="fill:${c.dim}">${fmt(v,axisDec(kst))}</text>`; }
   for(let v=ta;v<=tb+1e-9;v+=ts) s+=`<text x="${X(v).toFixed(1)}" y="${y1+16}" text-anchor="middle" font-size="11" style="fill:${c.dim}">${fmt(v,0)}°</text>`;
   if(ta<0&&tb>0) s+=`<line x1="${X(0).toFixed(1)}" x2="${X(0).toFixed(1)}" y1="${y0}" y2="${y1}" style="stroke:${c.dim}" stroke-dasharray="2 3"/>`;
   const xs=[]; for(let k=0;k<=40;k++) xs.push(ta+(tb-ta)*k/40); if(wx.base_c>ta&&wx.base_c<tb) xs.push(wx.base_c); xs.sort((a,b)=>a-b);
-  const up=xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)+wx.band).toFixed(1)), dn=xs.slice().reverse().map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)-wx.band).toFixed(1));
+  const up=xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)+band).toFixed(1)), dn=xs.slice().reverse().map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)-band).toFixed(1));
   s+=`<polygon points="${up.concat(dn).join(" ")}" style="fill:${c.after}" opacity=".14"/>`;
   s+=`<polyline fill="none" points="${xs.map(t=>X(t).toFixed(1)+","+Y(pwKg(wx,t)).toFixed(1)).join(" ")}" style="stroke:${c.after}" stroke-width="2.5"/>`;
   const yd=P.length?P[P.length-1]:null;
   P.forEach(p=>{ const me=p===yd; s+=`<circle class="wxPt" cx="${X(p[1]).toFixed(1)}" cy="${Y(p[2]).toFixed(1)}" r="${me?6:3.5}" style="fill:${me?c.ink:c.bar}${me?";stroke:"+c.card:""}" stroke-width="1.5"><title>${esc(p[0]+" · "+fmt(p[1],1)+" °C · "+fmt(p[2],1)+" kg")}</title></circle>`; });
-  if(yd){ const r=X(yd[1])>x1-70; s+=`<text x="${(X(yd[1])+(r?-9:9)).toFixed(1)}" y="${(Y(yd[2])-8).toFixed(1)}" font-size="11"${r?' text-anchor="end"':""} style="fill:${c.ink}">${esc(grT("wx_yday"))}</text>`; }
-  s+=`<text x="${x1}" y="12" text-anchor="end" font-size="12" font-weight="650" style="fill:${c.ink}">${esc(grT("wx_at0",{a:fmt(wx.at0,1)}))}</text>`;
+  // the newest day: "yesterday" only when it is yesterday's pellets day, else its date
+  if(yd){ const r=X(yd[1])>x1-70, y=new Date(); y.setDate(y.getDate()-1);
+    const iso=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
+    const lb=yd[0]===iso?grT("wx_yday"):dmon(new Date(yd[0]+"T12:00").getTime()/1000);
+    s+=`<text class="wxYd" x="${(X(yd[1])+(r?-9:9)).toFixed(1)}" y="${(Y(yd[2])-8).toFixed(1)}" font-size="11"${r?' text-anchor="end"':""} style="fill:${c.ink}">${esc(lb)}</text>`; }
+  s+=`<text x="${x1}" y="12" text-anchor="end" font-size="12" font-weight="650" style="fill:${c.ink}">${esc(grT("wx_at0",{a:fmt(wx.at0,1),t:wx.ref_c||0}))}</text>`;
   s+=`<text x="0" y="12" font-size="11" style="fill:${c.dim}">${esc(grT("wx_ax_y"))}</text><text x="${x1}" y="${H-4}" text-anchor="end" font-size="11" style="fill:${c.dim}">${esc(grT("wx_ax_x"))}</text>`;
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%" role="img" aria-label="${esc(grT("wx_h"))}">${s}</svg>`;
 }
