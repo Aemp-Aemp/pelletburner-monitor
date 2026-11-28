@@ -114,9 +114,15 @@ def con_props(uuid):
 
 
 def scan_errors():
-    """brcmfmac scan errors in the kernel log of the last 10 minutes."""
+    """Scan errors of the last 10 minutes: brcmfmac's in the kernel log, and wpa_supplicant's "Failed to initiate
+    sched scan" (how a stuck chip shows on a real Pi 4, hundreds per outage) from wpa_supplicant / NetworkManager."""
     code, out = run(["journalctl", "-k", "-q", "--no-pager", "--since", "-10min"])
-    return sum(1 for ln in out.splitlines() if "scan error" in ln and "brcmf" in ln) if code == 0 else 0
+    n = sum(1 for ln in out.splitlines() if "scan error" in ln and "brcmf" in ln) if code == 0 else 0
+    code, out = run(["journalctl", "-q", "--no-pager", "--since", "-10min", "-u", "wpa_supplicant.service",
+                     "-u", "NetworkManager.service"])
+    if code == 0:
+        n += sum(1 for ln in out.splitlines() if "failed to initiate sched scan" in ln.lower())
+    return n
 
 
 def observe():
@@ -245,11 +251,13 @@ def log_event(data, ev, now, dry=False, **kw):
         return
     path = os.path.join(data, LOG_NAME)
     try:
-        if os.path.getsize(path) > LOG_MAX:
-            with open(path, encoding="utf-8", errors="replace") as f:
-                keep = f.read().splitlines()[-300:]
-            with open(path + ".new", "w", encoding="utf-8") as f:
-                f.write("\n".join(keep) + "\n")
+        if os.path.getsize(path) > LOG_MAX:            # keep the newest half (whole lines)
+            with open(path, "rb") as f:
+                f.seek(-(LOG_MAX // 2), 2)
+                tail = f.read()
+            keep = tail.split(b"\n", 1)[1] if b"\n" in tail else b""
+            with open(path + ".new", "wb") as f:
+                f.write(keep)
             os.replace(path + ".new", path)
     except OSError:
         pass

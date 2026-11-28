@@ -9,6 +9,8 @@ Open an issue with the **Bug report** template and tell us:
 - **Controller software version:** on the boiler, MENU → FLERE → INFO (for example V1.40.1).
 - **Monitor version:** at the bottom of the page (shown as "Version ...", for example 1.0.0).
 - What you did, what you expected, what happened. A screenshot of the page helps.
+- **Lighting trouble:** History → Burner health → Time to flame → **Copy lighting report**, and paste the text.
+  **Picture for service** (History) makes one picture with the settings and the last starts.
 - **Logs:** `docker compose logs --tail 200`, and if it is about a start or an alarm, that day's
   `data/events-YYYY-MM-DD.jsonl`.
 

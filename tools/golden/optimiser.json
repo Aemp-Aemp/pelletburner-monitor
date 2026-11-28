@@ -231,6 +231,8 @@
 "unit":"days"
 }
 ],
+"last_clean":null,
+"sensor_at":null,
 "status":"ok"
 },
 "lux":{

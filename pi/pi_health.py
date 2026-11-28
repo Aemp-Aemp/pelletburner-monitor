@@ -11,6 +11,7 @@ import datetime, glob, json, os, subprocess, sys, time
 DATA = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~pi/pelletburner-monitor/data")
 KEEP_DAYS = 30
 DNS_NAME = "pool.ntp.org"          # a well-known name for the DNS check (the clock needs it anyway)
+HOTSPOT = "pelletpi-setup"         # the Pi's own setup hotspot connection (HOTSPOT in pelletpi_wifi_setup.py)
 
 
 def run(*cmd, timeout=5):
@@ -41,10 +42,11 @@ def throttled():
 
 def links():
     out = {}
-    for line in run("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "dev").splitlines():
-        dev, typ, state = (line.split(":") + ["", "", ""])[:3]
+    for line in run("nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "dev").splitlines():
+        dev, typ, state, con = (line.split(":", 3) + ["", "", "", ""])[:4]
         if typ in ("wifi", "ethernet"):
-            out[dev] = state
+            # on its own setup hotspot the Pi is not on the home Wi-Fi; the home network's name is never written
+            out[dev] = "hotspot" if state == "connected" and con == HOTSPOT else state
     sig = run("nmcli", "-t", "-f", "IN-USE,SIGNAL", "dev", "wifi")
     for line in sig.splitlines():
         if line.startswith("*:"):

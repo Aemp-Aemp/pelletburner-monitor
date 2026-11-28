@@ -134,6 +134,12 @@ SWITCH = {"ash_bin": "ash", "ash_clean": "ash", "ash_plate": "ash", "pi_disk": "
           "net_weak": "net", "net_down": "net",
           "monitor_updated": "monitor_start", "monitor_rolled_back": "monitor_start", "monitor_went_back": "monitor_start"}
 NET_TELL_MIN = 30              # weak Wi-Fi / no internet this long before a message
+# important messages that could not be sent (no internet) are kept in ntfy-state.json and sent when it is back,
+# oldest first, each with the time it happened; the others (burner start / stop, monitor started) are dropped
+KEEP = {"alarm", "alarm_clear", "link_lost", "link_back", "monitor_updated", "monitor_rolled_back", "daily"}
+PENDING_MAX = 50
+LATE = {"en": "at {t}: ", "da": "kl. {t}: "}
+NEW_VERSION = {"en": "the new version", "da": "den nye version"}
 
 ASH_PLATE_DA = {"stuck_out": "Askepladen er ikke kommet hjem igen. Tjek at intet blokerer den, og tjek kontakten.",
                 "alarm_out": "Alarmen kom mens askepladen var ude af sin hjemposition. Tjek askepladen.",
@@ -423,6 +429,10 @@ class Notifier:
         self.graph_clock = time.time   # tests set their own clock
         self.phone = None              # burner_phone.PhoneCommands when start / stop from the phone is set up
         self.own_ids = collections.deque(maxlen=200)   # ids of messages sent from here (never read as commands)
+        self.inflight = {}             # rate key -> when queued, until it is sent or dropped (the rate limit counts sends)
+        self._flush_asked = False
+        self._again = True             # the last failed send may work later (False: refused for good)
+        self._daily_try = None         # the day whose summary is queued (daily_last is set once it was sent)
         self._topic_now = self.cfg().get("topic") or ""
         settings.listeners.append(self._topic_changed)
         if start:
@@ -437,8 +447,9 @@ class Notifier:
         while waited < wait and self.update_busy(data_dir):
             sleep(step)
             waited += step
-        key, p = self.start_message(data_dir)
-        self.notify(key, rate_key="monitor_start", **p)
+        key, p = self.start_message(data_dir, lang=self.lang())
+        # an update / roll-back has its own rate key: a reboot message just before must not swallow it
+        self.notify(key, rate_key="monitor_start" if key == "monitor_start" else key, **p)
 
     @staticmethod
     def update_busy(data_dir, now=None):
@@ -453,7 +464,7 @@ class Notifier:
             return False
 
     @staticmethod
-    def start_message(data_dir, now=None):
+    def start_message(data_dir, now=None, lang="en"):
         """Why the monitor (re)started: an update in the last 20 min says so ("updated v1.0.2 -> v1.0.5", "did not
         work - went back"), otherwise the plain "monitor started". -> (key, {params})."""
         try:
@@ -468,7 +479,8 @@ class Notifier:
         if code == "updated" and frm and to:
             return "monitor_updated", {"frm": frm, "to": to}
         if code == "rolled_back" and cur:
-            return "monitor_rolled_back", {"tried": (to if to != cur else frm) or "the new version", "cur": cur}
+            return "monitor_rolled_back", {"tried": (to if to != cur else frm) or NEW_VERSION.get(lang, NEW_VERSION["en"]),
+                                           "cur": cur}
         if code == "went_back" and cur:
             return "monitor_went_back", {"cur": cur}
         return "monitor_start", {}
@@ -498,9 +510,9 @@ class Notifier:
             self.log(f"# alerts: state not saved ({e})")
 
     # ------------------------------------------------------------------ queueing
-    def notify(self, key, rate_key=None, now=None, **p):
-        """Queue message `key` if alerts are on, its switch is on and it was not sent in the last 30 min.
-        Returns True when queued."""
+    def notify(self, key, rate_key=None, now=None, day=None, **p):
+        """Queue message `key` if alerts are on, its switch is on and it was not sent (or queued) in the last 30 min.
+        Returns True when queued. day: the daily summary's day (marked done once it was sent)."""
         c = self.cfg()
         if not c.get("enabled") or not c.get("topic"):
             return False
@@ -510,28 +522,87 @@ class Notifier:
         rk = rate_key or key
         with self.lock:
             sent = self.state.setdefault("sent", {})
-            if key not in ("alarm", "alarm_clear") and now - (sent.get(rk) or 0) < RATE_S:
+            last = max(sent.get(rk) or 0, self.inflight.get(rk) or 0)
+            if key not in ("alarm", "alarm_clear") and now - last < RATE_S:
                 return False
-            sent[rk] = now
-            self._save_state()
+            self.inflight[rk] = now
         title, body, prio, tags = message(key, self.lang(), **p)
+        item = {"key": key, "title": title, "body": body, "priority": prio, "tags": tags, "rk": rk, "at": now}
+        if day:
+            item["day"] = day
         try:
-            self.q.put_nowait({"key": key, "title": title, "body": body, "priority": prio, "tags": tags})
+            self.q.put_nowait(item)
         except queue.Full:
+            if key in KEEP:
+                self._keep(item)
+                return True
             self.log(f"# alerts: queue full, dropped '{key}'")
+            with self.lock:
+                self.inflight.pop(rk, None)
             return False
         return True
+
+    # ------------------------------------------------------------------ kept for later (no internet)
+    def _keep(self, item):
+        """An important message that could not be sent: keep it (at most PENDING_MAX, the oldest go first)."""
+        with self.lock:
+            pend = self.state.setdefault("pending", [])
+            pend.append({k: item.get(k) for k in ("key", "title", "body", "priority", "tags", "rk", "at", "day")
+                         if item.get(k) is not None})
+            del pend[:-PENDING_MAX]
+            self._save_state()
+        self.log(f"# alerts: '{item['key']}' kept, sent when the connection is back")
+
+    def pending(self):
+        with self.lock:
+            return list(self.state.get("pending") or [])
+
+    def late_item(self, item):
+        """A kept message as it is sent later: the body starts with when it happened ("at 14:32: ...")."""
+        at = item.get("at")
+        if not at:
+            return dict(item)
+        d = datetime.datetime.fromtimestamp(at)
+        t = d.strftime("%H:%M") if d.date() == datetime.date.today() else d.strftime("%d-%m %H:%M")
+        return dict(item, body=LATE.get(self.lang(), LATE["en"]).format(t=t) + str(item.get("body") or ""))
+
+    def flush(self):
+        """Send the kept messages, oldest first; stop at the first that fails for lack of a connection (it stays
+        kept). One the server refuses for good (4xx) is dropped, so it can not hold up the rest. True when all went."""
+        self._flush_asked = False
+        while True:
+            pend = self.pending()
+            if not pend:
+                return True
+            first = pend[0]
+            if not self.deliver(self.late_item(first), retries=(), keep=False) and self._again:
+                return False
+            with self.lock:
+                p = self.state.get("pending") or []
+                if p and p[0] == first:
+                    p.pop(0)
+                self._save_state()
 
     def _send_loop(self):
         while True:
             item = self.q.get()
             try:
-                self.deliver(item)
+                self.send_one(item)
             except Exception as e:                       # never let the sending thread die
                 self.log(f"# alerts: error {e!r}")
 
-    def deliver(self, item, retries=None):
-        """Send one message now (with retries and growing waits); log and drop when it keeps failing."""
+    def send_one(self, item, retries=None):
+        """One item from the queue: the kept messages go first (oldest first), then this one."""
+        if self.pending() and not self.flush() and item.get("key") in KEEP:
+            self._keep(item)                             # still no connection: keep this one behind them
+            return False
+        if item.get("key") == "_flush":
+            return True
+        return self.deliver(item, retries=retries)
+
+    def deliver(self, item, retries=None, keep=True):
+        """Send one message now (with retries and growing waits). When it keeps failing: an important one (KEEP) is
+        kept for later (keep=True), the others are logged and dropped."""
         waits = self.RETRIES if retries is None else retries
         png = self._graph(item) if getattr(self.backend, "attachments", False) else None
         for i in range(len(waits) + 1):
@@ -559,15 +630,22 @@ class Notifier:
                     mid = send()
                 if mid:
                     self.own_ids.append(str(mid))
+                self._sent(item)
                 self._result(item["key"], True, "sent")
                 self.log(f"ntfy: sent {item['key']} (ok)")       # one line per message result (never the topic)
                 return True
             except SendError as e:
                 msg = _scrub(str(e), topic)
                 if not e.retry or i == len(waits):
+                    self._again = e.retry or e.kind == "cert"   # worth another try later (no internet, clock)
                     self._result(item["key"], False, msg, e.kind)
                     short = msg if len(msg) <= 80 else msg[:77] + "..."
                     self.log(f"ntfy: failed {item['key']}: {short}")
+                    if keep and item.get("key") in KEEP and (e.retry or e.kind == "cert"):
+                        self._keep(item)                 # no internet / wrong clock: send it when it works again
+                    elif keep and item.get("rk"):
+                        with self.lock:
+                            self.inflight.pop(item["rk"], None)
                     return False
                 self.log(f"# alerts: '{item['key']}' to {mask(topic)} failed ({msg}); new try in {waits[i]} s")
                 self.sleep(waits[i])
@@ -590,6 +668,19 @@ class Notifier:
         except Exception as e:
             self.log(f"ntfy: graph not made ({e.__class__.__name__}); text only")
             return None
+
+    def _sent(self, item):
+        """Delivered: the rate limit counts from now; the daily summary is done for its day."""
+        rk = item.get("rk")
+        if not rk and not item.get("day"):
+            return
+        with self.lock:
+            if rk:
+                self.state.setdefault("sent", {})[rk] = time.time()
+                self.inflight.pop(rk, None)
+            if item.get("day"):
+                self.state["daily_last"] = item["day"]
+            self._save_state()
 
     def _result(self, key, ok, msg, kind=None):
         self.last = {"t": round(time.time()), "ok": ok, "what": key, "msg": msg, "kind": kind}
@@ -657,6 +748,12 @@ class Notifier:
             self._check_silo(f)
         if now - self._pi_t >= 60:
             self._pi_t = now
+            if self.pending() and not self._flush_asked:     # kept messages: try again once a minute
+                try:
+                    self.q.put_nowait({"key": "_flush"})
+                    self._flush_asked = True
+                except queue.Full:
+                    pass
             self._check_pi(now)
             self._check_net(now)
         if now - self._ash_t >= 600:
@@ -799,15 +896,20 @@ class Notifier:
         dt = datetime.datetime.fromtimestamp(now)
         target = dt.replace(hour=h, minute=m, second=0, microsecond=0).timestamp()
         today = dt.date().isoformat()
-        if not 0 <= now - target < 1800 or self.state.get("daily_last") == today:
+        if not 0 <= now - target < 1800 or today in (self.state.get("daily_last"), self._daily_try) \
+                or any(x.get("day") == today for x in self.pending()):
             return
-        self._set(daily_last=today)
         s = self.window_summary(now)
+        queued = False
         if s is not None:                            # counted like the pages count a day, over the last 24 h
             opt = getattr(self.mod, "optimiser", None)
             d = F.day_numbers(s, getattr(opt, "correction", lambda: 1.0)())
-            self.notify("daily", now=now, h=d["burn_h"], starts=s.get("starts", 0), kg=round(d["fuel_kg"], 1),
-                        al=sum((s.get("alarms") or {}).values()))
+            queued = self.notify("daily", now=now, h=d["burn_h"], starts=s.get("starts", 0), kg=round(d["fuel_kg"], 1),
+                                 al=sum((s.get("alarms") or {}).values()), day=today)
+        if queued:
+            self._daily_try = today                  # done (daily_last) only once it was sent
+        else:
+            self._set(daily_last=today)              # nothing to send today
 
     def window_summary(self, now, hours=24):
         """Summary of the history rows of the last `hours` before `now` (the day files of both days, so it crosses

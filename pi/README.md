@@ -4,8 +4,8 @@ Tested on a Raspberry Pi 4 with Raspberry Pi OS Lite 64-bit (Trixie).
 
 ## Easy install (ready SD card)
 
-> **Not tested on a real card yet.** Everything in this section passed only static checks
-> (`python pi/_card_test.py`). Try it on a spare card before giving it to anyone.
+> The easy install is new and has not been tried on a fresh card yet; if you get stuck, the manual setup below is the tested way.
+> So far it has passed only static checks (`python pi/_card_test.py`).
 
 For people: see "Easy install" at the top of the main README. What happens behind it:
 
@@ -54,7 +54,7 @@ Imager's settings. Untested; whether Imager offers its settings for a custom ima
 ### Safe auto-update
 
 `install-auto-update.sh` (run by the easy install; by hand: `sudo REPO_URL=... sh pi/install-auto-update.sh`)
-installs `/usr/local/bin/pelletpi-update` with a timer (hourly 01:00-05:59, and 5 minutes after a start) and
+installs `/usr/local/bin/pelletpi-update` with a timer (hourly 01:00-05:59; 5 minutes after a start it only tidies up a cut-short update) and
 a path unit for the page's buttons. Each run:
 
 - looks for the newest release tag `vX.Y.Z` of `REPO_URL` (never a branch, never a pre-release like
@@ -80,11 +80,14 @@ a path unit for the page's buttons. Each run:
   units follow the program;
 - keeps `data/`, logs to `data/update.log`, and writes `data/update.json` for the pages.
 
-**From the page.** The buttons POST `/api/update/check`, `/retry` or `/back` (same protection as the other
-control routes: `X-Burner` header, JSON, local host name). The monitor writes that one word to
+**From the page.** The buttons POST `/api/update/check`, `/install`, `/retry` or `/back` (same protection as
+the other control routes: `X-Burner` header, JSON, local host name). The monitor writes that one word to
 `data/update-request`; the path unit starts `pelletpi-update check`, which reads the word and treats anything
-else as `check`. No address, version or command can come from the browser. `check` from the page installs
-right away (also when `AUTO_UPDATE=no`); if the burner is busy it waits up to 6 hours after the download.
+else as `check`. No address, version or command can come from the browser. **Check** only looks (the page then
+offers **Install**); **Install** installs right away (also when `AUTO_UPDATE=no`); if the burner is busy it
+waits up to 6 hours after the download. The switch *Automatic updates at night* POSTs `/api/update/auto-on` or
+`/auto-off`, stored in `data/update-auto` (`on` / `off`); the updater reads it on its next run.
+`AUTO_UPDATE=no` on the card stays off whatever the switch says.
 
 | Case | How it ends |
 |---|---|
@@ -97,8 +100,8 @@ right away (also when `AUTO_UPDATE=no`); if the burner is busy it waits up to 6 
 | Go back while the burner works | Refused; nothing changed |
 | The older version does not start after Go back | Returns to the newer one |
 
-Off: `AUTO_UPDATE=no` in `pelletpi/settings.txt` on the boot drive (or `/etc/default/pelletpi-update`); the
-page's button still works. By hand: `sudo pelletpi-update now`, `sudo pelletpi-update back`.
+Off: the page's switch, or `AUTO_UPDATE=no` in `pelletpi/settings.txt` on the boot drive (or
+`/etc/default/pelletpi-update`); the page's Install button still works. By hand: `sudo pelletpi-update now`, `sudo pelletpi-update back`.
 A Pi installed with the first updater needs `sudo sh pi/install-auto-update.sh` once (in the program folder);
 until then it updates, but the page shows no progress and no Go back.
 A monitor that restarts again and again and has never logged: `docker compose stop` in the program folder;
@@ -194,10 +197,10 @@ On the first start the Pi runs the script once, removes it from `cmdline.txt` an
 ## 3. Connect
 
 Plug the Pi's USB-C port into the PC (this also powers the Pi; use a strong USB-C port), wait about 2 minutes,
-then:
+then log in with the user you chose in Imager:
 
 ```bash
-ssh pi@10.55.0.1
+ssh <user>@10.55.0.1
 ```
 
 ## 4. Docker

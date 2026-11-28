@@ -39,7 +39,7 @@ check("shared.js holds the helpers", names == ["LOC", "esc", "fmt", "median", "c
                                              "BH_TXT", "bhT", "bhWhen", "CC_NAMES", "ccName", "ccParts", "ccNum",
                                              "ccChange", "rsOutcome", "sentenceCase",   # + the Burner health details
                                              "UPD_TXT", "updT",                                          # + the update card
-                                             "GR_TXT", "grT", "grDay", "grW", "chParts", "pwKg"])       # + the two graphs
+                                             "GR_TXT", "grT", "grDay", "grW", "clParts", "chParts", "pwKg"])       # + the two graphs
 check("one clock style (17:15) in both languages: times via clock(), not the browser's locale",
       all("toLocaleTimeString" not in read(p) for p in sync_pages.PAGES))
 for page in sync_pages.PAGES:

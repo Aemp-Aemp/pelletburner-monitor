@@ -1,36 +1,51 @@
 # Pellet burner monitor
 
+A small program and web page for a home pellet boiler. It runs on a Raspberry Pi next to the boiler, saves the
+history and shows the boiler on your phone or PC.
+
 **Start here**
 
-- **You need:** a Raspberry Pi 4 (2 GB is enough) with power supply and SD card (16 GB or more), a USB-to-serial
-  adapter for the boiler's module port, and boiler software 1.30 or newer (1.40 / 1.41 tested).
+- **You need:** a Raspberry Pi 4 (2 GB is enough) with power supply and SD card (16 GB or more), a
+  USB-RS-485 adapter, and a network cable with one end cut off, wired to the adapter (three wires, see
+  [What you need](#what-you-need)) and plugged into the boiler's module port J4. Boiler software 1.30 or newer
+  (tested on 1.40); check it in MENU → FLERE → INFO before you buy parts.
 - **Install:** write the card with Raspberry Pi Imager, unzip **`pelletpi-card.zip`** from the
   [newest release](../../releases/latest) onto it, put it in the Pi, connect the boiler, wait 15 minutes,
   open **http://pelletpi.local**. The steps are just below.
-- **Help:** the full guide is [`docs/guide.html`](docs/guide.html). Using an AI assistant? Let it read [`AI.md`](AI.md).
+- **Help:** the full guide is [`docs/guide.html`](docs/guide.html). Using an AI assistant (ChatGPT, Claude,
+  Copilot ...)? Let it read [`AI.md`](AI.md) first. Stuck? See [Getting help](#getting-help).
 
-> **Using an AI assistant** (ChatGPT, Claude, Copilot ...) to install it? Let it read [`AI.md`](AI.md) first.
+**Start her (dansk):** Siden kan vises på dansk: vælg **DA** øverst på siden. Vejledningen her og i
+`docs/guide.html` er på engelsk. En AI-assistent (ChatGPT, Claude, Copilot ...) kan hjælpe dig på dansk: bed
+den læse [`AI.md`](AI.md) først.
 
 ## Easy install (Raspberry Pi, no typing)
 
-> **New, not tested on a real card yet.** Try it on a spare card first; the manual setup below is the tested way.
+> The easy install is new and has not been tried on a fresh card yet; if you get stuck, the manual setup below is the tested way.
 
-1. In **Raspberry Pi Imager** choose *Raspberry Pi OS Lite (64-bit)*. In Imager's settings set the host name
-   `pelletpi`, a user name and password, your Wi-Fi and your time zone. Write the card.
-2. Unzip **`pelletpi-card.zip`** (from the releases page) onto the card's boot drive (`bootfs`): the folder
-   `pelletpi` and the file `vendor-data`. If the drive is gone after writing, take the card out and put it back.
-3. Put the card in the Pi, plug the USB adapter into the boiler's module port, and switch the Pi on.
+1. In **Raspberry Pi Imager** choose *Raspberry Pi OS Lite (64-bit)* (under *Raspberry Pi OS (other)*; device:
+   Raspberry Pi 4). In Imager's settings set the host name `pelletpi`, a user name and password, your Wi-Fi and
+   your time zone. Write the card.
+2. Unzip **`pelletpi-card.zip`** (from the [newest release](../../releases/latest)) onto the card's boot drive
+   (`bootfs`): the folder `pelletpi` and the file `vendor-data` must lie directly on the drive
+   (`bootfs\pelletpi\` and `bootfs\vendor-data`). On Windows, "Extract all" makes an extra `pelletpi-card`
+   folder: move its contents up onto the drive. If the drive is gone after writing, take the card out and put it back.
+3. Wire the cable, plug it into J4 on the boiler and the adapter into the Pi. Then put the card in the Pi and
+   switch the Pi on.
 4. Wait about 15 minutes, then open **http://pelletpi.local** on your phone or PC (same Wi-Fi).
+5. When the page opens, turn on IO BOKS on the boiler: MONTØR → AVANCERET → EKSTRA UDSTYR → IO BOKS. Turned on
+   before the monitor runs, it gives alarm 15 after about 50 s; then reset the alarm on the boiler.
 
 The Pi needs internet the first time; without it, it waits and tries again every minute. To see progress,
 open http://pelletpi.local while it installs, or put the card in a PC and open `pelletpi-status.txt`.
+Page does not open? See [Troubleshooting](#troubleshooting-top-5).
 Every night it installs a new release by itself, but only while the burner is off or waiting
-(turn off: `AUTO_UPDATE=no` in `pelletpi/settings.txt`). Details and the untested parts: [`pi/README.md`](pi/README.md).
+(turn off: the switch on the page, or `AUTO_UPDATE=no` in `pelletpi/settings.txt`). Details: [`pi/README.md`](pi/README.md).
 
-**Updating from the page.** Settings → About this monitor → **Check for update** looks for a new release; if there
-is one, press **Install** (also works when the nightly update is off). The switch *Automatic updates at night*
-turns the nightly update on or off. No internet at the boiler: turn on your phone's hotspot (a Wi-Fi the Pi knows),
-press Check and Install, wait until the page says the download is done, turn the hotspot off.
+**Updating from the page.** Settings → About this monitor → **Check for update** only looks for a new release;
+if there is one, press **Install** (also works when the nightly update is off). The switch *Automatic updates at
+night* turns the nightly update on or off. No internet at the boiler: turn on your phone's hotspot (a Wi-Fi the
+Pi knows), press Check and Install, wait until the page says the download is done, turn the hotspot off.
 The new version is tested after the swap (it starts, shows data, reads the settings, the boiler connects again);
 if not, the Pi goes back to the old version by itself. For 14 days there is also a **Go back** button. Settings
 and history are kept. More in the guide, "Updating". Not tested on a real Pi yet.
@@ -40,8 +55,10 @@ and history are kept. More in the guide, "Updating". Not tested on a real Pi yet
 **http://10.42.0.1:8099**, pick your Wi-Fi and type its password. The hotspot turns off when the Pi is on your
 Wi-Fi, or after 15 minutes. A network cable to the router works too.
 
-A small program and web page for a home pellet burner. It listens on the burner's module port, saves the
-history, and shows it on a friendly page (English or Danish) on your phone or PC:
+## What it does
+
+It listens on the burner's module port, saves the history, and shows it on a friendly page (English or Danish)
+on your phone or PC:
 
 - what the burner is doing right now, with a live picture of the fire
 - a heating plan: "warm by 05:30", "keep warm 17:15-19:30", "start at 09:00". Under the plan: was the boiler
@@ -57,6 +74,7 @@ history, and shows it on a friendly page (English or Danish) on your phone or PC
   they are kept on the monitor (change them in Settings → My boiler) and never sent to the boiler. Skip is fine.
 
 It runs offline. Only the optional outside temperature uses the internet (Open-Meteo, no account).
+Weather and place search: Open-Meteo.com (CC BY 4.0); place names from GeoNames.
 
 > **📘 The full guide:** [`docs/guide.html`](docs/guide.html) — setup, alarms and troubleshooting, how the
 > controller works, the module port and protocol. One file that works offline: download it (the **Download raw
@@ -96,7 +114,8 @@ It runs offline. Only the optional outside temperature uses the internet (Open-M
 - A Raspberry Pi 4 (or any Linux PC) with Docker
 - A USB-RS-485 adapter with automatic direction control (FTDI, CH340, CP210x and similar)
 - A network cable with one end cut off, for the boiler's module port J4
-- The burner set to allow a remote module: AVANCERET → EKSTRA UDSTYR → IO BOKS on
+- Boiler software 1.30 or newer (MENU → FLERE → INFO). Check this before you buy parts.
+- The burner set to allow a remote module: MONTØR → AVANCERET → EKSTRA UDSTYR → IO BOKS on
 
 **Wiring** (T568B colours; J4 is RS-485, not Ethernet, so never plug it into a router or PC):
 
@@ -115,9 +134,11 @@ plugging in: part of the board carries 230 V. Pictures and details: the guide's 
   monitor uses. Tested on 1.40 (the maintainer's boiler). 1.40.1 and 1.41 use the same connection and should
   work; 1.41 only adds a cloud address for the Wi-Fi module (not tested live yet).
 - **Not supported:** software older than 1.30, for example 1.13 (2015). It has no Wi-Fi / IO box connection,
-  only the old SMS box link. Updating the controller software is a job for the dealer.
-- **Boiler types:** 10 kW (shown as "1200GP" from 1.40), 15 kW ("1700GP") and 25 kW all work. The type is set
-  on the boiler (MONTØR → KEDEL TYPE); set the monitor's boiler size (Settings → My boiler) to match.
+  only the old SMS box link: there is no IO BOKS item, and the page stays at "no data". Check the version before
+  you buy parts. Updating the controller software is a job for the dealer.
+- **Boiler types:** all three work. KEDEL TYPE 0 = 10 kW (shown as 1200GP from software 1.40), 1 = 15 kW
+  (1700GP), 2 = 25 kW. The type is set on the boiler (MONTØR → KEDEL TYPE); set the monitor's boiler size
+  (Settings → My boiler) to match.
 - **Hardware** V3 and V4. Check software and hardware in MENU → FLERE → INFO.
 
 ## Quick start (Docker)
@@ -157,7 +178,7 @@ Settings → Service & relearn → **Run the setup again**.
 
 1. **Language**: English or Danish.
 2. **Welcome**: shows live if the boiler is connected. If not, check the cable and that the boiler has
-   EKSTRA UDSTYR → IO BOKS on. You can go on anyway.
+   MONTØR → AVANCERET → EKSTRA UDSTYR → IO BOKS on. You can go on anyway.
 3. **Your boiler**: size (10, 15 or 25 kW, filled in from the boiler when it can), software version, minimum power and
    fan rpm at 100 %. The same three numbers as for **Picture for service**, which then does not ask again.
 4. **Outside temperature** (optional): pick your town. Only its rounded coordinates are sent.
@@ -222,14 +243,33 @@ The monitor is made for a home network you trust. It has no log-in.
 ## Troubleshooting (top 5)
 
 1. **No data on the page.** Check IO BOKS is on and the cable is in J4. Still nothing? Swap A and B.
+   No IO BOKS item on the boiler? The software is older than 1.30 (for example 1.13) and is not supported
+   (MENU → FLERE → INFO).
 2. **Alarm 15 "External IO" on the boiler.** The monitor was silent for about 50 s (stopped, unplugged,
    updating). Reset it on the boiler; it does not come back while the monitor runs.
-3. **The page does not open.** Use the same Wi-Fi, add `:8787`, or use the Pi's address instead of
-   `pelletpi.local`. Check `docker compose ps` and `docker compose logs`.
+3. **pelletpi.local does not open.**
+   - Wait the full 15 minutes.
+   - Use the same Wi-Fi as the Pi, not a guest network.
+   - Try the number address (like `http://192.168.1.23`) from the router's or phone hotspot's list of devices.
+     With the manual setup, also try `:8787`.
+   - Put the card in a PC and read `pelletpi-status.txt`. No status file after 20 minutes means the files are in
+     the wrong place (see step 2 of the easy install), or use the
+     [`cmdline.txt` fallback](pi/README.md#easy-install-ready-sd-card).
+   - On the Pi: `docker compose ps` and `docker compose logs`.
 4. **Two USB-serial adapters.** The program will not guess; set `BURNER_SERIAL` (see "Connecting the boiler").
 5. **Plan times are off.** The Pi's clock is behind after a restart without internet (see "Without internet").
 
 Boiler alarms and what to check: the guide's *Troubleshooting* section.
+
+## Getting help
+
+Open an issue on GitHub (**Issues → New issue**). Please say:
+
+- the boiler software version (MENU → FLERE → INFO) and the monitor version (bottom of the page);
+- for lighting trouble: History → Burner health → Time to flame → **Copy lighting report**, and paste the text.
+  **Picture for service** (History) makes one picture with the settings and the last starts.
+
+Remove your phone alert topic and Wi-Fi name before posting. More in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Without internet
 
@@ -244,7 +284,7 @@ The program works fully offline; only the outside temperature waits for the inte
   Wi-Fi, internet, USB adapter, container). Install the Pi health log once with
   `sudo sh pi/install-pi-logging.sh`; it also keeps the system journal across restarts
   (`journalctl -b -1` shows the start before, e.g. USB plug events).
-  To take the logs home: `scp -r pi@<pi-address>:pelletburner-monitor/data ./burner-data`.
+  To take the logs home: `scp -r <user>@<pi-address>:pelletburner-monitor/data ./burner-data`.
 
 ## Disk use and how long data is kept
 
@@ -267,7 +307,7 @@ Small card? Set `BURNER_KEEP_DAYS=7` in `.env`. The settings page shows the days
 
 `pi/` holds a one-time setup script for Raspberry Pi OS (Trixie, 64-bit). It turns the Pi 4's USB-C port into
 a network cable: plug the Pi into a Windows, macOS or Linux PC and it shows up as a network adapter, with no
-driver to install. The Pi is then at `10.55.0.1` (`ssh pi@10.55.0.1`). See `pi/README.md`.
+driver to install. The Pi is then at `10.55.0.1` (`ssh <user>@10.55.0.1`, with the user you chose in Imager). See `pi/README.md`.
 
 `tools/tunnel_proxy.py` lends the PC's internet to the Pi through the SSH connection, for when the Pi has no
 Wi-Fi yet (for installing Docker).
@@ -295,8 +335,7 @@ heating plan's next start, data age, boiler link, monitor version, and Pi health
 disk and memory, uptime, Wi-Fi, internet, under-voltage, USB adapter). When the monitor stops, everything shows
 "unavailable".
 
-**Start and stop:** *Start burner* / *Stop burner* buttons, and switches for the heating plan and the auto-start
-schedule. The buttons follow the same rules as on the monitor's page: they only exist with `--allow-remote-start`
+**Start and stop:** *Start burner* / *Stop burner* buttons, and a switch for the heating plan. The buttons follow the same rules as on the monitor's page: they only exist with `--allow-remote-start`
 (on in the Docker setup), the command reaches the boiler within about 30 s, and nothing is sent while the boiler
 is in ALARM (an alarm is always reset on the boiler or on the monitor's page; there, Start/Stop during an alarm
 first asks you to confirm the reset). `BURNER_MQTT_READ_ONLY=1` sends

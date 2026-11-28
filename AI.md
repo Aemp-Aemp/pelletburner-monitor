@@ -2,12 +2,13 @@
 
 You are an AI assistant (ChatGPT, Claude, Copilot or similar) helping a person install and run the pellet
 boiler monitor in this repository. Read this file first. Use short, plain sentences with the person. When
-this file and the code disagree, the code is right; the full user guide is `docs/guide.html`.
+this file and the code disagree, the code is right; the full user guide is `docs/guide.html`. Answer in the
+person's language (the guide is in English; the page can be shown in Danish with **DA** at the top).
 
 ## 1. What this is
 
 A small program and web page for a home pellet boiler (10, 15 or 25 kW). It runs on a Raspberry Pi in Docker.
-It connects to the boiler controller's module port (J4) with a USB cable, saves the history and shows it on a
+It connects to the boiler controller's module port (J4) with a USB-RS-485 adapter, saves the history and shows it on a
 web page for phone or PC (English or Danish): live state, heating plan, pellets, ash, burner health, history.
 It works offline. Optional extras: phone alerts (ntfy), Home Assistant (MQTT), outside temperature (Open-Meteo).
 
@@ -19,15 +20,17 @@ It works offline. Optional extras: phone alerts (ntfy), Home Assistant (MQTT), o
   into a router or PC. Wiring (T568B): pin 1 white-orange = B (D-), pin 2 orange = A (D+), pin 3
   white-green = GND. Tape off all other wires. Switch the boiler off before plugging in: part of the board
   carries 230 V.
-- On the boiler: AVANCERET -> EKSTRA UDSTYR -> IO BOKS on. The monitor uses the same connection as the
+- On the boiler: MONTØR -> AVANCERET -> EKSTRA UDSTYR -> IO BOKS on (after the monitor runs, see below). The monitor uses the same connection as the
   boiler's own Wi-Fi / IO box module.
 - Home Wi-Fi (or a network cable to the router) for the Pi.
 
 **Supported controller software** (check on the boiler: MENU -> FLERE -> INFO):
 
 - 1.30 or newer works. 1.40 is tested. 1.40.1 and 1.41 should work.
-- Older than 1.30 (for example 1.13) is not supported: it has no Wi-Fi / IO box connection. Updating the
+- Older than 1.30 (for example 1.13) is not supported: it has no Wi-Fi / IO box connection, so there is no
+  IO BOKS item and the page stays at "no data". Check the version before the person buys parts. Updating the
   controller software is a job for the dealer.
+- Boiler types: KEDEL TYPE 0 = 10 kW (shown as 1200GP from software 1.40), 1 = 15 kW (1700GP), 2 = 25 kW.
 - Hardware V3 and V4.
 
 ## 2. Safety rules (follow them, and tell the person)
@@ -49,15 +52,21 @@ It works offline. Optional extras: phone alerts (ntfy), Home Assistant (MQTT), o
 
 ### Easy way (SD card, no typing)
 
-This path is new and not tested on a real card yet. The manual way below is the tested one.
+The easy install is new and has not been tried on a fresh card yet; if you get stuck, the manual setup below is the tested way.
 
-1. Install **Raspberry Pi Imager**. Choose *Raspberry Pi OS Lite (64-bit)*. In Imager's settings set host name
-   `pelletpi`, a user name and password, the home Wi-Fi and the time zone. Write the card.
-2. Unzip `pelletpi-card.zip` (from the releases page) onto the card's boot drive (`bootfs`): the folder
-   `pelletpi` and the file `vendor-data`.
-3. Put the card in the Pi, plug the USB adapter into the boiler's J4 cable, switch the Pi on.
+1. Install **Raspberry Pi Imager**. Choose *Raspberry Pi OS Lite (64-bit)* (under *Raspberry Pi OS (other)*;
+   device: Raspberry Pi 4). In Imager's settings set host name `pelletpi`, a user name and password, the home
+   Wi-Fi and the time zone. Write the card.
+2. Unzip `pelletpi-card.zip` (from the newest release) onto the card's boot drive (`bootfs`). The folder
+   `pelletpi` and the file `vendor-data` must lie directly on the drive (`bootfs\pelletpi\`,
+   `bootfs\vendor-data`), not inside a `pelletpi-card` folder that Windows "Extract all" makes.
+3. Wire the cable, plug it into J4 and the adapter into the Pi. Then put the card in the Pi and switch it on.
 4. Wait about 15 minutes. The Pi needs internet the first time. Then open **http://pelletpi.local** on a
    phone or PC on the same Wi-Fi. Progress: that page while it installs, or `pelletpi-status.txt` on the card.
+5. When the page opens, turn on IO BOKS on the boiler: MONTØR -> AVANCERET -> EKSTRA UDSTYR -> IO BOKS.
+   Turned on before the monitor runs, it gives alarm 15 after about 50 s; then reset the alarm on the boiler.
+
+After the easy install SSH is on: `ssh <user>@pelletpi.local`, with the user chosen in Imager.
 
 ### Wi-Fi setup hotspot (wrong Wi-Fi password, new router)
 
@@ -74,7 +83,7 @@ forever) and `802-11-wireless.powersave 2` (power save off), plus `/etc/NetworkM
 a watchdog (`pelletpi-wifi-watchdog.timer`, every minute) joins the known Wi-Fi again after 3 min, turns the radio
 off/on after 5 min, reloads the `brcmfmac` driver when scans keep failing, and lets `pelletpi-setup` open after
 10 min. Events: `data/wifi-watchdog.jsonl`. Off: `WIFI_WATCHDOG=no` in `pelletpi/settings.txt`. An existing Pi gets
-it with the next update, or `sudo sh pi/install-wifi-watchdog.sh`. Still lost: USB-C cable, `ssh pi@10.55.0.1`,
+it with the next update, or `sudo sh pi/install-wifi-watchdog.sh`. Still lost: USB-C cable, `ssh <user>@10.55.0.1`,
 `journalctl -u NetworkManager -b`, `dmesg | grep brcmf`; check with `sudo /sbin/iw dev wlan0 get power_save`
 (iw is in /sbin). Restart the Pi only when the boiler is off or waiting.
 
@@ -123,18 +132,24 @@ through `/api/settings`. Changes in Settings are saved at once.
   `docker compose up -d`. Home Assistant: `BURNER_MQTT`, `BURNER_MQTT_USER`, `BURNER_MQTT_PASS` (see README).
 - **Updating:** after the easy install or `pi/install.sh`, the Pi installs new releases by itself at night,
   but only while the burner is off or waiting. From the page: Settings → About this monitor → **Check for
-  update** (works without the nightly update; no internet: share it from a phone hotspot the Pi knows). The new
+  update** only looks; **Install** installs (also with the nightly update off; no internet: share it from a
+  phone hotspot the Pi knows). The switch *Automatic updates at night* turns the nightly update on or off. The new
   version is tested after the swap; if it fails the Pi goes back by itself, and **Go back** is there for 14
-  days. Now: `sudo pelletpi-update now`, back: `sudo pelletpi-update back`. Off: `AUTO_UPDATE=no` in
-  `pelletpi/settings.txt` on the card. The page can only ask for check / retry / back (`data/update-request`,
-  one word); state for the page is `data/update.json` (`burner_ext.update_info`). By hand in a git copy, while the burner is off or waiting:
+  days. Now: `sudo pelletpi-update now`, back: `sudo pelletpi-update back`. Off: the switch, or `AUTO_UPDATE=no`
+  in `pelletpi/settings.txt` on the card (that one always wins). Routes: POST `/api/update/check`, `/install`,
+  `/retry`, `/back` leave one word in `data/update-request`; `/api/update/auto-on` and `/auto-off` write
+  `data/update-auto`. State for the page is `data/update.json` (`burner_ext.update_info`). By hand in a git copy, while the burner is off or waiting:
   `git pull`, then `docker compose build`, then `docker compose up -d`. Build first: when the boiler hears
   nothing for about 50 s it shows alarm 15 "External IO", which must be reset on the boiler.
 - **Backups:** everything is in `~/pelletburner-monitor/data/` on the Pi: `settings.json` (+ `.bak`),
   history `hist-*`, `raw-*`, `events-*`, `ignitions.jsonl`, `pi-health-*`, `responder.log`, alert state and
   certificates. Copy it: `scp -r <user>@pelletpi.local:pelletburner-monitor/data ./burner-data`.
   History is kept 30 days by default (`BURNER_KEEP_DAYS`). Updates keep `data/`.
-- **Power cuts:** tolerated. Broken or half-written data lines are skipped; settings and alert state fall back
+- **Cleaning:** a stopped boiler still runs the fan at about 25 %. Before cleaning the burner or the fan, switch
+  the boiler off at the mains (unplug it or use the wall switch). After cleaning, power on and press "I cleaned
+  the burner" on the page (History).
+- **Power cuts:** tolerated. The boiler's own counters (silo, starts) can jump after a power cut; the monitor
+  ignores such jumps. Broken or half-written data lines are skipped; settings and alert state fall back
   to their `.bak`. The Pi 4 has no clock battery: after a restart without internet its clock is behind until
   the internet is back, so plan times can be off.
 
@@ -152,7 +167,11 @@ Run these on the Pi, in `~/pelletburner-monitor`:
 | Problem | Check |
 |---|---|
 | No data on the page | IO BOKS on? Cable in J4? Swap A and B. Only one USB-serial adapter, or set `BURNER_SERIAL` in `.env` (`ls /dev/serial/by-id/`). |
-| Can't find the Pi | Same Wi-Fi as the phone? Try `:8787`, or the Pi's address from the router's device list instead of `pelletpi.local`. |
+| pelletpi.local does not open | Wait the full 15 minutes. Same Wi-Fi as the Pi, not a guest network. Try the number address from the router's or phone hotspot's device list (manual setup: also `:8787`). Read `pelletpi-status.txt` on the card. |
+| Install status | `pelletpi-status.txt` on the card: STARTING (files found), WAITING FOR INTERNET (tries every minute), WORKING (do not switch off), PROBLEM (tries again in 1 minute), READY. Full log: `pelletpi-install.log` on the card. |
+| No `pelletpi-status.txt` after 20 minutes | The files are in the wrong place: `pelletpi\` and `vendor-data` must lie directly on `bootfs`, not in a `pelletpi-card` folder. Else the `cmdline.txt` fallback in `pi/README.md`. |
+| No IO BOKS item on the boiler | Software older than 1.30 (MENU -> FLERE -> INFO). Not supported; the page stays at "no data". |
+| SSH after the easy install | SSH is on: `ssh <user>@pelletpi.local`, with the user chosen in Imager. |
 | Wi-Fi lost | The watchdog reconnects; after 10 minutes join `pelletpi-setup`, open http://10.42.0.1:8099. Or the USB-C cable (10.55.0.1) or a network cable. Events: `data/wifi-watchdog.jsonl`. |
 | Page shows old data | Check `"connected"` in `/status.json` and `docker compose ps`. Reload the page. |
 | Wrong numbers | Check Settings -> My boiler (size, min power %, fan rpm) matches the boiler, and the pellet store size (Settings -> Pellets & ash). Pellets at home drift: type the counted kg on the page again. |
@@ -162,7 +181,12 @@ Run these on the Pi, in `~/pelletburner-monitor`:
 | Weak power | `undervolt` in `pi-health-*`: use a 5 V / 3 A supply. |
 
 Boiler alarms and what to check: `docs/guide.html`, section *Troubleshooting*.
-Bug reports: see `CONTRIBUTING.md` (remove passwords, ntfy topics, addresses and Wi-Fi names first).
+
+**Getting help:** open an issue on GitHub (Issues -> New issue). Say the boiler software version (MENU -> FLERE
+-> INFO) and the monitor version (bottom of the page). For lighting trouble: History -> Burner health -> Time to
+flame -> **Copy lighting report**, and paste the text; **Picture for service** (History) makes one picture with
+the settings and the last starts. Remove the phone alert topic and Wi-Fi name before posting. More in
+`CONTRIBUTING.md`.
 
 ## 6. For developers and AI changing the code
 

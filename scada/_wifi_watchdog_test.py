@@ -72,6 +72,8 @@ def fake_run(args, timeout=60):
         return 0, fake["ip"]
     if a.startswith("journalctl -k"):
         return 0, fake["kernel"]
+    if a.startswith("journalctl -q") and "wpa_supplicant.service" in args:
+        return 0, fake.get("wpa", "")
     if a.startswith("systemctl is-active"):
         return (0 if fake["setup_active"] else 3), ""
     if a.startswith("systemctl is-enabled"):
@@ -209,6 +211,16 @@ drv = [m for m, a in got.items() if "driver" in a]
 check(drv[:1] == [3], f"scan errors: driver at 3 min {drv[:3]}")
 check(all(b - a >= 30 for a, b in zip(drv, drv[1:])) and len(drv) == W.DRIVER_MAX, f"driver: rate limit {drv}")
 
+# the same seen on a real Pi: wpa_supplicant cannot start its scans (made-up journal lines)
+os.remove(sf)
+reset(wpa="Nov 20 03:12:01 pi wpa_supplicant[612]: wlan0: Failed to initiate sched scan\n" * 300)
+check(W.scan_errors() == 300, f"wpa_supplicant 'Failed to initiate sched scan' counted: {W.scan_errors()}")
+got = {m: minute(m) for m in range(0, 10)}
+drv = [m for m, a in got.items() if "driver" in a]
+check(drv[:1] == [3], f"sched scan failures: driver at 3 min {drv[:3]}")
+reset(wpa="Nov 20 03:12:01 pi NetworkManager[600]: <info> device (wlan0): state change\n" * 5)
+check(W.scan_errors() == 0, "other journal lines are not scan errors")
+
 # Wi-Fi device gone (driver crashed): reload
 os.remove(sf)
 reset(devs="usb0:ethernet:connected:usb0\n")
@@ -245,7 +257,11 @@ with open(big, "a") as f:
     for i in range(4000):
         f.write(json.dumps({"epoch": i, "ev": "action", "do": "connect"}) + "\n")
 W.log_event(data, "action", T0, do="connect")
-check(os.path.getsize(big) < W.LOG_MAX, "log: trimmed")
+sz = os.path.getsize(big)
+lines = open(big, encoding="utf-8").read().splitlines()
+check(W.LOG_MAX // 2 - 200 <= sz <= W.LOG_MAX // 2 + 200, f"log: trimmed to the newest half of LOG_MAX ({sz} bytes)")
+check(all(json.loads(ln) for ln in lines) and json.loads(lines[-1])["epoch"] == round(T0)
+      and json.loads(lines[-2])["epoch"] == 3999, "log: whole lines, the newest kept")
 
 # ---------------------------------------------------------------- the server side: phone message text
 import burner_ext as X  # noqa: E402

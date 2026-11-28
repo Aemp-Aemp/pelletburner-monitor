@@ -406,6 +406,12 @@ html.fx-hid .fire *{animation-play-state:paused!important}
 .sheet .acts{display:flex;gap:8px;margin-top:16px}
 .sheet .acts .btn{flex:1}
 .mtext{font-size:16px;line-height:1.4;white-space:pre-line}
+.cln label{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--grid);cursor:pointer}
+.cln .mtext{margin-bottom:6px}
+.cln input{width:22px;height:22px;margin:1px 0 0;flex:none;accent-color:var(--ember)}
+.cln label span{display:flex;flex-direction:column;gap:2px;font-size:15px}
+.cln small{color:var(--ink2);font-size:13px;line-height:1.35}
+.cln .btn:disabled{opacity:.45}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--btnPri);color:var(--btnPriText);padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;box-shadow:var(--shadow);display:none;max-width:90vw;text-align:center}
 .toast.on{display:block}
 
@@ -1025,7 +1031,7 @@ const GR_TXT={
   ch_few_before:"Too few starts before the change to compare", ch_batch:"The pellet batch changed too, so it cannot say",
   ch_what:"Changed {d}: {p}.", ch_n:"{b} starts before, {a} after.", ch_many:"Several things changed at once: the graph cannot tell which one did it.",
   ch_batch_note:"A new pellet batch lights differently, so a settings change cannot be judged across it.",
-  ch_p_batch:"new pellet batch “{n}”", ch_p_clean:"burner cleaned", ch_pick:"Change",
+  ch_p_batch:"new pellet batch “{n}”", ch_p_clean:"burner cleaned", ch_p_cleaned:"Cleaned: {w}", cl_burner:"burner", cl_fan:"fan", cl_sensor:"flame sensor", ch_pick:"Change",
   ch_band:"Only lightings with the boiler at {a}–{b} °C at start are compared ({n} others left out). Relights and starts that went on burning are never counted.",
   ch_ax:"minutes to flame", ch_mark:"changed", ch_usual:"usual {a} min",
   c_m:"", c_b:"Before", c_a:"After", c_v:"Verdict",
@@ -1050,7 +1056,7 @@ const GR_TXT={
   ch_few_before:"For få starter før ændringen til at sammenligne", ch_batch:"Pillepartiet skiftede også, så det kan ikke siges",
   ch_what:"Ændret {d}: {p}.", ch_n:"{b} starter før, {a} efter.", ch_many:"Flere ting blev ændret på én gang: grafen kan ikke sige, hvilken der gjorde det.",
   ch_batch_note:"Et nyt pilleparti tænder anderledes, så en ændret indstilling kan ikke bedømmes hen over det.",
-  ch_p_batch:"nyt pilleparti “{n}”", ch_p_clean:"brænder renset", ch_pick:"Ændring",
+  ch_p_batch:"nyt pilleparti “{n}”", ch_p_clean:"brænder renset", ch_p_cleaned:"Renset: {w}", cl_burner:"brænder", cl_fan:"røgsuger", cl_sensor:"flammeføler", ch_pick:"Ændring",
   ch_band:"Kun optændinger med kedlen på {a}–{b} °C ved start sammenlignes ({n} andre udeladt). Genoptændinger og starter, der brændte videre, tælles aldrig med.",
   ch_ax:"minutter til flamme", ch_mark:"ændret", ch_usual:"normalt {a} min",
   c_m:"", c_b:"Før", c_a:"Efter", c_v:"Dom",
@@ -1072,8 +1078,10 @@ const GR_TXT={
 const grT=(k,p)=>{ let s=(GR_TXT[LANG]||GR_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
 const grDay=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"});
 const grW=el=>Math.max(260,Math.round((el&&el.clientWidth)||600));
-// a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”"
-const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name}):grT("ch_p_clean")).join(", ");
+// a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”", "Cleaned: burner, fan"
+const clParts=w=>(w||[]).map(x=>grT("cl_"+x)).join(", ");
+const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name})
+  :p.what&&p.what.length?grT("ch_p_cleaned",{w:clParts(p.what)}):grT("ch_p_clean")).join(", ");
 let CH_PICK=null, CH_ARGS=null;            // the change picked (its time), and what was drawn last (for the picker)
 function chDraw(el,ch,wx,c){
   CH_ARGS=[el&&el.id,ch,wx,c];
@@ -1260,7 +1268,7 @@ const I18N={
   at_start:"already in alarm when the program started", path_at_start:"It was already in alarm when the program started, so what came before is not known.",
   last30:"This alarm, last 30 days", today:"today", first30:"First time in 30 days.", times30:"{n}× in 30 days",
   add:"+ Add delivery", counted:"I counted", using:"Using {p} kg a day.", using_wx:"Buy-by date from the weather forecast and your house's line (see below).", using_wait:"The daily use shows after the first full day of burning.", using_early:"About {p} kg a day so far ({n} days, more accurate after 5).", using_early1:"About {p} kg a day so far (1 day, more accurate after 5).", pel_est:"estimate", pel_est_home:"estimate · bags, store and the boiler's silo", pel_est_why:"An estimate from how long and how hard the burner ran. Press “I counted” now and then: each count makes the estimate more accurate.", pel_corr:"Estimate corrected by your counts ({n}): the burner uses about {f} % of the calculated amount.",
-  ab_title:"Ash bin", batch_new:"New batch", batch_new_q:"Name of the pellets you use from now on (e.g. the brand on the bag). Without a delivery.", ab_fill_q:"How full was the bin?", ab_f_full:"Full", ab_f_forgot:"Forgot last time", ab_learned:"Ash share {p} %, learned from {n} emptying(s).", pl_stopat:"Stop at power", pl_stopat_ph:"normal {p}", pl_stopat_s:"Higher number = a short heat-up. Empty = the normal stop.", u_h:"h", ev_wait_warm:"Waiting: boiler still warm", ab_ch_bar:"Ash made per day (g)", ab_ch_line:"In the bin since emptied (kg)", ab_ch_full:"Bin full", ab_ch_note:"From the pellets burned × {p} % ash. An estimate: there is no ash sensor.", ab_full_at:"Full around {d}", ab_need_size:"Set the bin size under Settings → Advanced to see when it is full.", ab_wait:"A date shows after a day of burning.", hl_title:"Burner health", hl_learning:"Learning this burner’s normal", hl_ok:"All as normal", hl_watch:"Keep an eye on it", hl_clean:"Time to clean the burner", hl_sub:"Compared with this burner’s own normal since it was cleaned {d}.", hl_sub0:"Compared with this burner’s own normal.", hl_to_flame:"Minutes to flame", hl_start_flame:"Flame at the start", hl_failed:"Starts that didn’t light", hl_run_flame:"Flame while burning (same power)", hl_now_norm:"now {a} · normal {b}", hl_failed_v:"{a} of the last {n}", hl_need:"learning: {n} of {m}", hl_cleaned:"I cleaned the burner", hl_cleaned_q:"Start learning this burner’s normal again from now?", hl_why:"No fixed numbers: each check compares the latest starts or days with the first ones after the last cleaning. Works without internet.", ab_none_short:"Press “Just emptied” on the Pellets & ash tab after emptying it.", ab_since_short:"Emptied {d} ({n})", ab_est:"estimate", ab_none:"Press “Just emptied” the next time you empty the ash bin. From then on the page estimates how full it is.", ab_since:"Emptied {d} ({n}) · about {kg} kg pellets burned since · ≈ {ash} ash", ab_emptied:"Just emptied", ab_size:"Bin holds", ab_q:"Mark the ash bin as emptied now?", led_set:"{d} · counted / delivered", burned_since:"Burned since", at_home_now:"At home now",
+  ab_title:"Ash bin", batch_new:"New batch", batch_new_q:"Name of the pellets you use from now on (e.g. the brand on the bag). Without a delivery.", ab_fill_q:"How full was the bin?", ab_f_full:"Full", ab_f_forgot:"Forgot last time", ab_learned:"Ash share {p} %, learned from {n} emptying(s).", pl_stopat:"Stop at power", pl_stopat_ph:"normal {p}", pl_stopat_s:"Higher number = a short heat-up. Empty = the normal stop.", u_h:"h", ev_wait_warm:"Waiting: boiler still warm", ab_ch_bar:"Ash made per day (g)", ab_ch_line:"In the bin since emptied (kg)", ab_ch_full:"Bin full", ab_ch_note:"From the pellets burned × {p} % ash. An estimate: there is no ash sensor.", ab_full_at:"Full around {d}", ab_need_size:"Set the bin size under Settings → Advanced to see when it is full.", ab_wait:"A date shows after a day of burning.", hl_title:"Burner health", hl_learning:"Learning this burner’s normal", hl_ok:"All as normal", hl_watch:"Keep an eye on it", hl_clean:"Time to clean the burner", hl_sub:"Compared with this burner’s own normal since it was cleaned {d}.", hl_sub0:"Compared with this burner’s own normal.", hl_to_flame:"Minutes to flame", hl_start_flame:"Flame at the start", hl_failed:"Starts that didn’t light", hl_run_flame:"Flame while burning (same power)", hl_now_norm:"now {a} · normal {b}", hl_failed_v:"{a} of the last {n}", hl_need:"learning: {n} of {m}", hl_cleaned:"I cleaned the burner", hl_cleaned_q:"What did you clean?", cl_burner:"Burner, herd and ash", cl_burner_s:"Time to flame and failed starts learn again", cl_fan:"Fan and chamber", cl_fan_s:"The fan’s normal speed is learned again", cl_sensor:"Flame sensor glass", cl_sensor_s:"The flame sensor learns again (same as “Sensor cleaned”)", cl_none:"Tick at least one.", hl_why:"No fixed numbers: each check compares the latest starts or days with the first ones after the last cleaning. Works without internet.", ab_none_short:"Press “Just emptied” on the Pellets & ash tab after emptying it.", ab_since_short:"Emptied {d} ({n})", ab_est:"estimate", ab_none:"Press “Just emptied” the next time you empty the ash bin. From then on the page estimates how full it is.", ab_since:"Emptied {d} ({n}) · about {kg} kg pellets burned since · ≈ {ash} ash", ab_emptied:"Just emptied", ab_size:"Bin holds", ab_q:"Mark the ash bin as emptied now?", led_set:"{d} · counted / delivered", burned_since:"Burned since", at_home_now:"At home now",
   pallet:"Pallet", bag:"Bag", other:"Other", u_pallet:"pallet", u_pallets:"pallets", u_bag:"bag", u_bags:"bags",
   new_total:"New total", save:"Save", close:"Close", batch_name:"Pellet name (optional)", batch_note:"A name starts a new batch colour.",
   count_h:"I counted", bags15:"Bags × 15", kg_in:"kg", kg_ph:"kg", saved:"Saved.", save_fail:"Not saved.", bad_kg:"Enter a weight in kg.",
@@ -1412,7 +1420,7 @@ const I18N={
   at_start:"var allerede i alarm, da programmet startede", path_at_start:"Den var allerede i alarm, da programmet startede, så hvad der skete før, vides ikke.",
   last30:"Denne alarm, sidste 30 dage", today:"i dag", first30:"Første gang i 30 dage.", times30:"{n}× på 30 dage",
   add:"+ Ny levering", counted:"Jeg har talt", using:"Bruger {p} kg om dagen.", using_wx:"Købsdatoen er ud fra vejrudsigten og dit hus' linje (se nedenfor).", using_wait:"Forbruget pr. dag vises efter den første hele dag med fyring.", using_early:"Ca. {p} kg om dagen indtil nu ({n} dage, mere præcist efter 5).", using_early1:"Ca. {p} kg om dagen indtil nu (1 dag, mere præcist efter 5).", pel_est:"skøn", pel_est_home:"skøn · sække, lager og kedlens silo", pel_est_why:"Et skøn ud fra hvor længe og hvor hårdt brænderen har kørt. Tryk “Jeg har talt” en gang imellem: hver optælling gør skønnet mere præcist.", pel_corr:"Skønnet er rettet efter jeres optællinger ({n}): brænderen bruger ca. {f} % af den beregnede mængde.",
-  ab_title:"Askeskuffe", batch_new:"Nyt parti", batch_new_q:"Navn på de piller du bruger fra nu (f.eks. mærket på sækken). Uden en levering.", ab_fill_q:"Hvor fuld var skuffen?", ab_f_full:"Fuld", ab_f_forgot:"Glemte sidst", ab_learned:"Askeandel {p} %, lært af {n} tømning(er).", pl_stopat:"Stop ved effekt", pl_stopat_ph:"normal {p}", pl_stopat_s:"Højere tal = kort opvarmning. Tomt = det normale stop.", u_h:"t", ev_wait_warm:"Venter: kedlen er stadig varm", ab_ch_bar:"Aske pr. dag (g)", ab_ch_line:"I skuffen siden tømning (kg)", ab_ch_full:"Skuffen fuld", ab_ch_note:"Ud fra brændte piller × {p} % aske. Et skøn: der er ingen askeføler.", ab_full_at:"Fuld omkring {d}", ab_need_size:"Sæt skuffens størrelse under Indstillinger → Avanceret for at se hvornår den er fuld.", ab_wait:"En dato vises efter en dags fyring.", hl_title:"Brænderens tilstand", hl_learning:"Lærer brænderens normale", hl_ok:"Alt som normalt", hl_watch:"Hold øje med den", hl_clean:"Tid til at rense brænderen", hl_sub:"Sammenlignet med brænderens egen normal siden rensningen {d}.", hl_sub0:"Sammenlignet med brænderens egen normal.", hl_to_flame:"Minutter til flamme", hl_start_flame:"Flamme ved start", hl_failed:"Starter der ikke tændte", hl_run_flame:"Flamme under fyring (samme effekt)", hl_now_norm:"nu {a} · normalt {b}", hl_failed_v:"{a} af de sidste {n}", hl_need:"lærer: {n} af {m}", hl_cleaned:"Jeg har renset brænderen", hl_cleaned_q:"Begynd at lære brænderens normale forfra fra nu?", hl_why:"Ingen faste tal: hvert tjek sammenligner de seneste starter eller dage med de første efter sidste rensning. Virker uden internet.", ab_none_short:"Tryk “Lige tømt” under Piller & aske når I har tømt den.", ab_since_short:"Tømt {d} ({n})", ab_est:"skøn", ab_none:"Tryk “Lige tømt” næste gang I tømmer askeskuffen. Derefter skønner siden hvor fuld den er.", ab_since:"Tømt {d} ({n}) · ca. {kg} kg piller brændt siden · ≈ {ash} aske", ab_emptied:"Lige tømt", ab_size:"Skuffen rummer", ab_q:"Markér askeskuffen som tømt nu?", led_set:"{d} · talt / leveret", burned_since:"Brændt siden", at_home_now:"Hjemme nu",
+  ab_title:"Askeskuffe", batch_new:"Nyt parti", batch_new_q:"Navn på de piller du bruger fra nu (f.eks. mærket på sækken). Uden en levering.", ab_fill_q:"Hvor fuld var skuffen?", ab_f_full:"Fuld", ab_f_forgot:"Glemte sidst", ab_learned:"Askeandel {p} %, lært af {n} tømning(er).", pl_stopat:"Stop ved effekt", pl_stopat_ph:"normal {p}", pl_stopat_s:"Højere tal = kort opvarmning. Tomt = det normale stop.", u_h:"t", ev_wait_warm:"Venter: kedlen er stadig varm", ab_ch_bar:"Aske pr. dag (g)", ab_ch_line:"I skuffen siden tømning (kg)", ab_ch_full:"Skuffen fuld", ab_ch_note:"Ud fra brændte piller × {p} % aske. Et skøn: der er ingen askeføler.", ab_full_at:"Fuld omkring {d}", ab_need_size:"Sæt skuffens størrelse under Indstillinger → Avanceret for at se hvornår den er fuld.", ab_wait:"En dato vises efter en dags fyring.", hl_title:"Brænderens tilstand", hl_learning:"Lærer brænderens normale", hl_ok:"Alt som normalt", hl_watch:"Hold øje med den", hl_clean:"Tid til at rense brænderen", hl_sub:"Sammenlignet med brænderens egen normal siden rensningen {d}.", hl_sub0:"Sammenlignet med brænderens egen normal.", hl_to_flame:"Minutter til flamme", hl_start_flame:"Flamme ved start", hl_failed:"Starter der ikke tændte", hl_run_flame:"Flamme under fyring (samme effekt)", hl_now_norm:"nu {a} · normalt {b}", hl_failed_v:"{a} af de sidste {n}", hl_need:"lærer: {n} af {m}", hl_cleaned:"Jeg har renset brænderen", hl_cleaned_q:"Hvad har du renset?", cl_burner:"Brænder, herd og aske", cl_burner_s:"Tid til flamme og starter der ikke tændte læres forfra", cl_fan:"Røgsuger og brændkammer", cl_fan_s:"Røgsugerens normale omdrejninger læres forfra", cl_sensor:"Flammefølerens glas", cl_sensor_s:"Flammeføleren lærer forfra (som “Føler renset”)", cl_none:"Sæt mindst ét flueben.", hl_why:"Ingen faste tal: hvert tjek sammenligner de seneste starter eller dage med de første efter sidste rensning. Virker uden internet.", ab_none_short:"Tryk “Lige tømt” under Piller & aske når I har tømt den.", ab_since_short:"Tømt {d} ({n})", ab_est:"skøn", ab_none:"Tryk “Lige tømt” næste gang I tømmer askeskuffen. Derefter skønner siden hvor fuld den er.", ab_since:"Tømt {d} ({n}) · ca. {kg} kg piller brændt siden · ≈ {ash} aske", ab_emptied:"Lige tømt", ab_size:"Skuffen rummer", ab_q:"Markér askeskuffen som tømt nu?", led_set:"{d} · talt / leveret", burned_since:"Brændt siden", at_home_now:"Hjemme nu",
   pallet:"Palle", bag:"Sæk", other:"Andet", u_pallet:"palle", u_pallets:"paller", u_bag:"sæk", u_bags:"sække",
   new_total:"Ny total", save:"Gem", close:"Luk", batch_name:"Pillenavn (valgfrit)", batch_note:"Et navn starter en ny partifarve.",
   count_h:"Jeg har talt", bags15:"Sække × 15", kg_in:"kg", kg_ph:"kg", saved:"Gemt.", save_fail:"Ikke gemt.", bad_kg:"Skriv en vægt i kg.",
@@ -3387,10 +3395,30 @@ function chartAsh(el){
     <div class="note" style="margin-top:6px">${esc(a.learned?t("ab_learned",{p:nf(pctA,2),n:a.learned}):t("ab_ch_note",{p:nf(pctA,1)}))}</div>`;
 }
 function healthCardHTML(){ return OPT&&OPT.health?healthChecklistHTML(true):""; }       // the one Burner health card
+// "I cleaned the burner": which parts? burner (pot, ash) and fan are ticked, the flame sensor glass is not (it has its
+// own "Sensor cleaned" too). The server takes only these three words; nothing goes to the boiler.
+const CLEAN_TICKS=[["burner",1],["fan",1],["sensor",0]];
+function askClean(){
+  return new Promise(resolve=>{
+    const bg=document.createElement("div"); bg.className="scrim";
+    bg.innerHTML=`<div class="sheet cln" role="dialog" aria-modal="true" aria-labelledby="clnQ"><div class="mtext" id="clnQ"><b>${esc(t("hl_cleaned_q"))}</b></div>
+      ${CLEAN_TICKS.map(([k,on])=>`<label><input type="checkbox" data-part="${k}"${on?" checked":""}><span><b>${esc(t("cl_"+k))}</b><small>${esc(t("cl_"+k+"_s"))}</small></span></label>`).join("")}
+      <div class="note cln-none" hidden>${esc(t("cl_none"))}</div>
+      <div class="acts"><button type="button" class="btn sec" data-a="0">${esc(t("btn_cancel"))}</button><button type="button" class="btn emb" data-a="1">OK</button></div></div>`;
+    const parts=()=>[...bg.querySelectorAll("[data-part]")].filter(x=>x.checked).map(x=>x.dataset.part);
+    const done=v=>{ bg.remove(); document.removeEventListener("keydown",key); resolve(v); };
+    const key=e=>{ if(e.key==="Escape") done(null); };
+    bg.addEventListener("change",()=>{ const p=parts(); bg.querySelector(".cln-none").hidden=!!p.length; bg.querySelector('[data-a="1"]').disabled=!p.length; });
+    bg.addEventListener("click",e=>{ if(e.target===bg) return done(null); const a=e.target.closest("[data-a]"); if(!a) return;
+      if(a.dataset.a!=="1") return done(null); const p=parts(); if(p.length) done(p); });
+    document.addEventListener("keydown",key);
+    document.body.appendChild(bg); bg.querySelector('[data-a="0"]').focus();
+  });
+}
 document.addEventListener("click",async e=>{
   if(!e.target.closest("[data-cleaned]")) return;
-  if(!(await askConfirm(t("hl_cleaned_q"),t("hl_cleaned")))) return;
-  try{ const {ok}=await api("api/health/cleaned",{}); toast(ok?t("saved"):t("save_fail")); if(ok) loadSlow(); }catch(err){ toast(t("save_fail")); }
+  const parts=await askClean(); if(!parts) return;
+  try{ const {ok,j}=await api("api/health/cleaned",{parts}); toast(ok?t("saved"):saveFail(j,t("save_fail"))); if(ok) loadSlow(); }catch(err){ toast(t("save_fail")); }
 });
 // lighting time per start + pellet batches: how the burner behaves -> History tab
 function ignSectionHTML(v){

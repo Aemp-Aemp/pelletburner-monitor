@@ -49,6 +49,10 @@ check("A: history and start records together list each setting once (014, 017, 0
 cp = F.change_points(R, (), [{"name": "B", "since": T0 + 4 * 12 * H}], T0 + 15 * 12 * H)
 check("A: a pellet batch and the burner cleaned are changes too",
       [c["parts"][0]["k"] for c in cp] == ["batch", "cfg", "cleaned"], cp)
+cp = F.change_points(R, (), (), [{"t": T0 + 15 * 12 * H, "parts": ["burner", "fan"]},
+                                 {"t": T0 + 15 * 12 * H + 600, "parts": ["sensor"]}])
+check("A: clean marks say which parts; two close together are one cleaning with all the parts",
+      cp[-1]["parts"] == [{"k": "cleaned", "what": ["burner", "fan", "sensor"]}], cp)
 cp = F.change_points(R, (), [{"name": "B", "since": R[10]["epoch"] + 600}])
 check("A: a batch within 6 h of a settings change is the same change",
       len(cp) == 1 and {p["k"] for p in cp[0]["parts"]} == {"cfg", "batch"}, cp)

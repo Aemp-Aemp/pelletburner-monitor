@@ -234,6 +234,8 @@ check("firstboot hands REPO_URL to the updater", "REPO_URL=$url sh" in fb and "s
 ins = rd("pi/install-auto-update.sh")
 check("the updater is replaced in one move (a running update keeps its copy)", "pelletpi-update.new /usr/local/bin/pelletpi-update" in ins)
 check("after a start the updater tidies up (power cut)", "OnBootSec=" in ins)
+check("the start-up run is its own unit ('boot'); the nightly timer has no OnBootSec",
+      "ExecStart=/usr/local/bin/pelletpi-update boot" in ins and "OnBootSec=" not in ins.split("pelletpi-update.timer <<")[1].split("EOF")[0])
 check("changed units take effect: daemon-reload, then the timer and the path unit are restarted",
       ins.index("systemctl daemon-reload") < ins.index("systemctl restart pelletpi-update.timer pelletpi-update-check.path"))
 check("a half-made local history (tarball install) is removed again", 'rm -rf "$APP/.git"' in up)
@@ -467,7 +469,7 @@ class Pi:
         self.conf = dict(APP=fw(self.app), REPO_URL=fw(remote), AUTO_UPDATE="yes", STATE=fw(self.state),
                          URL=f"http://127.0.0.1:{mon.port}", CARD_SETTINGS=fw(os.path.join(self.root, "none.txt")),
                          STEP=0, START_TRIES=2, LINK_TRIES=2, WAIT_STEP=1, WAIT_PAGE=3, WAIT_AUTO=0, QUIET_WAIT=0,
-                         DEAD_WAIT=0, MIN_FREE_KB=0)
+                         DEAD_WAIT=0, MIN_FREE_KB=0, BOOT_UPTIME=0)
         self.conf.update(conf)
 
     def rx(self, age, name="last_rx"):   # the monitor last heard the boiler `age` seconds ago (data/last_rx)
@@ -859,6 +861,24 @@ def updater_tests():
     check("power cut during the test, new version runs fine: it is kept", g.on("v1.1.0") and g.untouched()
           and (j.get("previous") or {}).get("version") == "v1.0.0", (j, g.out))
     check("... and its own updater is installed", os.path.exists(os.path.join(g.fake, "refreshed")), g.out)
+    # --- the start-up run (a few minutes after a reboot): only tidies up, never installs (in the daytime)
+    reset()
+    bt = Pi(rem, mon, "boot")
+    j = bt.run("boot")
+    check("boot run: a newer release is not looked for or installed", j == {} and "build" not in bt.docker()
+          and bt.on("v1.0.0") and bt.rc == 0 and "start-up run" in bt.out, (j, bt.out))
+    j = bt.run("auto", BOOT_UPTIME=999999999, HOUR="14")
+    check("an 'auto' run soon after a start, in the daytime (an older timer): only a boot run", j == {}
+          and "build" not in bt.docker() and bt.on("v1.0.0"), (j, bt.out))
+    j = bt.run("auto", BOOT_UPTIME=999999999, HOUR="03")
+    check("... at 03 it is the nightly run and installs", j.get("code") == "updated" and bt.on("v1.1.0"), (j, bt.out))
+    bt2 = Pi(rem, mon, "boot_tidy")
+    cut(bt2, "img-v1.0.0")
+    j = bt2.run("boot")
+    check("boot run after a power cut: the cut-short update is tidied up, nothing installed", bt2.on("v1.0.0")
+          and bt2.untouched() and "build" not in bt2.docker() and j.get("code") is None and "tidied up" in j.get("result", ""),
+          (j, bt2.out))
+
     reset()
     h = Pi(rem, mon, "h")
     cut(h, "img-v1.1.0", kind="back")

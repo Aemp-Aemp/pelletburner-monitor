@@ -248,14 +248,14 @@ def main():
          "9 MQTT cfg change refused (no settings over MQTT)")
     time.sleep(3)
     res["9 board + file unchanged"] = "PASS" if (CTL.ram["000"], json.load(open(desired))["cfg_data_1"]["000"]) == before else "FAIL"
-    # Home Assistant extras: schedule switch, new entities, the checker tool
-    wait(lambda: any(t == "homeassistant/switch/burner/schedule/config" for t, p, r in got), 10, "9a HA schedule switch discovered")
+    # Home Assistant extras: the old schedule switch is removed (empty retained config), the checker tool
+    wait(lambda: any(t == "homeassistant/switch/burner/schedule/config" and not p for t, p, r in got), 10,
+         "9a HA schedule switch removed")
     ha.publish("burner/cmd/schedule", "ON")
-    wait(lambda: json.loads(urllib.request.urlopen(f"http://127.0.0.1:{HTTP_PORT}/api/settings").read())
-         ["settings"]["schedule"]["enabled"] is True, 10, "9b MQTT schedule ON -> setting saved")
-    wait(lambda: any(t == "burner/schedule" and '"enabled": true' in p.replace('":true', '": true') for t, p, r in got),
-         15, "9c burner/schedule state published")
-    ha.publish("burner/cmd/schedule", "OFF")
+    wait(lambda: any(t == "burner/cmd/result" and "unknown command" in p and "schedule" in p for t, p, r in got), 10,
+         "9b MQTT schedule ON refused (no auto-start schedule over MQTT)")
+    res["9c schedule setting unchanged"] = "PASS" if not json.loads(urllib.request.urlopen(
+        f"http://127.0.0.1:{HTTP_PORT}/api/settings").read())["settings"]["schedule"]["enabled"] else "FAIL"
     import subprocess
     pr = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "mqtt_check.py"),
                          "--host", f"127.0.0.1:{MQTT_PORT}", "--seconds", "3"], capture_output=True, text=True)

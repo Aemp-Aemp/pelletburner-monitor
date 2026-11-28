@@ -70,18 +70,7 @@ json.dump({"cfg_data_1": {"000": 65, "001": 2200, "002": 45, "003": 0, "004": 20
 logs = []
 cs = X.CfgSync(p, logs.append, every_s=0)
 check("10 valid file loaded", len(cs.desired) == 16)
-ok, msg = cs.set_values({"000": 1e9})
-check("10 out-of-range value refused", not ok)
-ok, msg = cs.set_values({"000": "65"})
-check("10 string value refused", not ok)
-ok, msg = cs.set_values({"018": 0})
-check("10 MAX DOSER 0 refused (the boiler would do ~255 top-ups)", not ok)
-ok, msg = cs.set_values({"016": 0})
-check("10 OPVARMNING 0 refused (~18 h wait)", not ok)
-ok, msg = cs.set_values({"033": 2})
-check("10 check-only key refused", not ok)
-ok, msg = cs.set_values({"000": 66})
-check("10 good value saved atomically", ok and json.load(open(p))["cfg_data_1"]["000"] == 66 and not os.path.exists(p + ".tmp"))
+check("10 nothing here writes boiler settings (set_values is gone)", not hasattr(cs, "set_values"))
 board = {k: 1 for k in cs.desired}
 cs.on_cfg(board)
 sizes = [len(json.dumps({"response": "OK", "cfg_data_1": b}, separators=(",", ":"))) + 1 for b in cs.queue]

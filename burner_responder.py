@@ -888,10 +888,31 @@ def start_http(mod, port, log, host="127.0.0.1", allowed_hosts=()):
                 mod.optimiser.reset()
                 return self._json(200, {"ok": True, "msg": "optimiser history cleared"})
             if path == "/api/health/cleaned" and mod.settings:
-                # the owner cleaned the burner: burner health learns this burner's normal again from now
-                mod.settings.set_internal("health", "cleaned_at", round(time.time()))
-                mod.note_event({"type": "cleaned", "epoch": time.time()})
-                return self._json(200, {"ok": True, "msg": "burner cleaned - learning its normal again"})
+                # the owner cleaned parts of the burner (the page's "What did you clean?"). Only these words:
+                # burner = pot and ash (time to flame, failed starts learn again), fan = fan and chamber (the fan
+                # monitor relearns), sensor = flame sensor glass (the flame sensor relearns). No parts = the old
+                # page: burner + fan. Nothing goes to the boiler.
+                import burner_features as F
+                parts = body.get("parts", ["burner", "fan"]) if isinstance(body, dict) else None
+                if not isinstance(parts, list) or not parts or len(parts) > len(F.CLEAN_PARTS) \
+                        or not all(isinstance(p, str) and p in F.CLEAN_PARTS for p in parts):
+                    return self._json(400, {"ok": False, "msg": "parts must be some of: " + ", ".join(F.CLEAN_PARTS)})
+                now = time.time()
+                mark = mod.settings.mark_cleaned(parts, now)
+                if "fan" in mark["parts"]:
+                    if mod.fan:
+                        mod.fan.reset()
+                    else:
+                        mod.settings.set_internal("fan", "reset_epoch", now)
+                    mod.note_event({"type": "fan_reset", "epoch": now})
+                if "sensor" in mark["parts"]:
+                    if mod.lux:
+                        mod.lux.reset()                 # its own lux_reset event
+                    else:
+                        mod.settings.set_internal("lux", "reset_epoch", now)
+                mod.note_event({"type": "cleaned", "epoch": now, "parts": mark["parts"]})
+                return self._json(200, {"ok": True, "parts": mark["parts"],
+                                        "msg": "cleaned: " + ", ".join(mark["parts"]) + " - learning again"})
             if path == "/api/minmode/off" and mod.minmode:
                 # the owner says the boiler's own minimum mode is now off (page note only; nothing goes to the boiler)
                 mod.minmode.turned_off()

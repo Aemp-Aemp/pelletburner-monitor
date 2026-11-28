@@ -450,7 +450,6 @@ finally:
 # ---- why the monitor (re)started: an update says so
 td = tempfile.mkdtemp()
 try:
-    sm = N.Ntfy.start_message if hasattr(N, "Ntfy") else None
     cls = next(c for c in vars(N).values() if isinstance(c, type) and hasattr(c, "start_message"))
     sm = cls.start_message
     T0 = 1000000.0

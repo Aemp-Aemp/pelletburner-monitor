@@ -37,11 +37,57 @@ try:
     # 4) a different burner with other numbers (8 min, flame 90) that is steady -> ok (own normal, not ours)
     o.mod = Mod([rec(i, 8.0, 90) for i in range(10)])
     check("other burner, own normal -> ok", o.health(days=[])["status"] == "ok")
-    # 5) cleaned mark: older records are ignored -> learning again
+    # 5) burner + fan cleaned (the dialog's default): time to flame and failed starts learn again, the flame sensor
+    # items do not (the glass was not touched)
+    st0 = lambda h, k: next(i for i in h["items"] if i["key"] == k)["state"]
+    o.mod = Mod([rec(i, 4.5 + (i % 2) * 0.2, 150) for i in range(10)])
+    mark = st.mark_cleaned(["fan", "burner"], now - 2 * 3600)
+    h = o.health(days=[])
+    check("burner+fan clean: parts kept in order", mark["parts"] == ["burner", "fan"]
+          and h["last_clean"] == {"t": round(now - 2 * 3600), "parts": ["burner", "fan"]})
+    check("burner+fan clean: time to flame and failed starts learn again",
+          st0(h, "to_flame") == "learning" and st0(h, "failed") == "learning")
+    check("burner+fan clean: flame at the start keeps its normal", st0(h, "start_flame") == "ok")
+    ck = {c["k"]: c["st"] for c in h["checks"]}
+    check("burner+fan clean: checklist light learns, flame sensor stays", ck["light"] == "learn" and ck["flame"] == "ok")
+    check("burner+fan clean: the flame sensor was not reset", not st.get("lux")["reset_epoch"])
+    # 5b) only the flame sensor glass: the flame items learn again, the lighting items keep going
+    st.set_internal("health", "cleaned_at", None)
+    st.mark_cleaned(["sensor"], now - 2 * 3600)
+    check("sensor clean alone does not move cleaned_at", st.get("health")["cleaned_at"] is None)
+    st.set_internal("lux", "reset_epoch", now - 2 * 3600)      # what the route's lux.reset() does
+    h = o.health(days=[])
+    ck = {c["k"]: c["st"] for c in h["checks"]}
+    check("sensor clean: flame at the start learns again", st0(h, "start_flame") == "learning" and ck["flame"] == "learn")
+    check("sensor clean: time to flame and failed starts keep their normal",
+          st0(h, "to_flame") == "ok" and st0(h, "failed") == "ok" and ck["light"] == "ok")
+    check("sensor clean: marks say what was cleaned",
+          [m["parts"] for m in st.clean_marks()] == [["burner", "fan"], ["sensor"]])
+    st.set_internal("lux", "reset_epoch", 0)
+    st.set_internal("health", "marks", [])
     st.set_internal("health", "cleaned_at", now - 2 * 3600)
-    check("after cleaning -> learning", o.health(days=[])["status"] == "learning")
+    check("after cleaning -> learning (lighting items)", st0(o.health(days=[]), "to_flame") == "learning")
     # 6) cleaned_at survives a restart
     check("cleaned_at saved", F.Settings(d, log).get("health")["cleaned_at"] is not None)
+    # 6b) an old settings file: cleaned_at without parts loads, and counts as burner + fan
+    d2 = tempfile.mkdtemp()
+    try:
+        with open(os.path.join(d2, "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"health": {"cleaned_at": 1_700_000_000}}, f)
+        old = F.Settings(d2, log)
+        check("old cleaned_at loads", old.get("health")["cleaned_at"] == 1_700_000_000)
+        check("old cleaned_at = burner + fan", old.clean_marks() == [{"t": 1_700_000_000, "parts": ["burner", "fan"]}])
+        check("old cleaned_at in the change list", F.change_points([], (), (), old.clean_marks())[0]["parts"]
+              == [{"k": "cleaned", "what": ["burner", "fan"]}])
+        old.mark_cleaned(["sensor"], 1_700_100_000)
+        check("a new mark keeps the old one", [m["parts"] for m in F.Settings(d2, log).clean_marks()]
+              == [["burner", "fan"], ["sensor"]])
+        with open(os.path.join(d2, "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"health": {"cleaned_at": 5, "marks": [{"t": 9, "parts": ["boiler"]}, "x",
+                                                             {"t": 7, "parts": ["fan", "oven"]}]}}, f)
+        check("odd marks in the file are left out", F.Settings(d2, log).clean_marks() == [{"t": 7, "parts": ["fan"]}])
+    finally:
+        shutil.rmtree(d2, ignore_errors=True)
     # 7) running flame per power: last 2 days dimmer than the 2 before
     day = lambda n, fl: {"day": f"2026-11-{n:02d}", "running_s": 7200, "flame_power": {"50": [3600, fl * 3600, 3600, 0, 0]}}
     st.set_internal("health", "cleaned_at", None)

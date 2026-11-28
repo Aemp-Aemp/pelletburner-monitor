@@ -425,7 +425,7 @@ const GR_TXT={
   ch_few_before:"Too few starts before the change to compare", ch_batch:"The pellet batch changed too, so it cannot say",
   ch_what:"Changed {d}: {p}.", ch_n:"{b} starts before, {a} after.", ch_many:"Several things changed at once: the graph cannot tell which one did it.",
   ch_batch_note:"A new pellet batch lights differently, so a settings change cannot be judged across it.",
-  ch_p_batch:"new pellet batch “{n}”", ch_p_clean:"burner cleaned", ch_pick:"Change",
+  ch_p_batch:"new pellet batch “{n}”", ch_p_clean:"burner cleaned", ch_p_cleaned:"Cleaned: {w}", cl_burner:"burner", cl_fan:"fan", cl_sensor:"flame sensor", ch_pick:"Change",
   ch_band:"Only lightings with the boiler at {a}–{b} °C at start are compared ({n} others left out). Relights and starts that went on burning are never counted.",
   ch_ax:"minutes to flame", ch_mark:"changed", ch_usual:"usual {a} min",
   c_m:"", c_b:"Before", c_a:"After", c_v:"Verdict",
@@ -450,7 +450,7 @@ const GR_TXT={
   ch_few_before:"For få starter før ændringen til at sammenligne", ch_batch:"Pillepartiet skiftede også, så det kan ikke siges",
   ch_what:"Ændret {d}: {p}.", ch_n:"{b} starter før, {a} efter.", ch_many:"Flere ting blev ændret på én gang: grafen kan ikke sige, hvilken der gjorde det.",
   ch_batch_note:"Et nyt pilleparti tænder anderledes, så en ændret indstilling kan ikke bedømmes hen over det.",
-  ch_p_batch:"nyt pilleparti “{n}”", ch_p_clean:"brænder renset", ch_pick:"Ændring",
+  ch_p_batch:"nyt pilleparti “{n}”", ch_p_clean:"brænder renset", ch_p_cleaned:"Renset: {w}", cl_burner:"brænder", cl_fan:"røgsuger", cl_sensor:"flammeføler", ch_pick:"Ændring",
   ch_band:"Kun optændinger med kedlen på {a}–{b} °C ved start sammenlignes ({n} andre udeladt). Genoptændinger og starter, der brændte videre, tælles aldrig med.",
   ch_ax:"minutter til flamme", ch_mark:"ændret", ch_usual:"normalt {a} min",
   c_m:"", c_b:"Før", c_a:"Efter", c_v:"Dom",
@@ -472,8 +472,10 @@ const GR_TXT={
 const grT=(k,p)=>{ let s=(GR_TXT[LANG]||GR_TXT.en)[k]; if(s==null) s=k; for(const x in (p||{})) s=s.split("{"+x+"}").join(p[x]); return s; };
 const grDay=ep=>new Date(ep*1000).toLocaleDateString(LOC(),{day:"numeric",month:"short"});
 const grW=el=>Math.max(260,Math.round((el&&el.clientWidth)||600));
-// a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”"
-const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name}):grT("ch_p_clean")).join(", ");
+// a change's parts in words: "Start fuel 60 → 40 s, new pellet batch “B”", "Cleaned: burner, fan"
+const clParts=w=>(w||[]).map(x=>grT("cl_"+x)).join(", ");
+const chParts=c=>(c.parts||[]).map(p=>p.k==="cfg"?ccChange(p):p.k==="batch"?grT("ch_p_batch",{n:p.name})
+  :p.what&&p.what.length?grT("ch_p_cleaned",{w:clParts(p.what)}):grT("ch_p_clean")).join(", ");
 let CH_PICK=null, CH_ARGS=null;            // the change picked (its time), and what was drawn last (for the picker)
 function chDraw(el,ch,wx,c){
   CH_ARGS=[el&&el.id,ch,wx,c];

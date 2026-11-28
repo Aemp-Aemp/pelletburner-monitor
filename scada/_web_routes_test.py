@@ -150,5 +150,38 @@ for err in (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
     check(f"{err.__name__} in an answer: one short line, connection closed",
           not raised and len(lines) == 1 and "/status.json" in lines[0] and "since" not in lines[0]
           and h.close_connection)
+# "I cleaned the burner": only the fixed part names; burner + fan = cleaned_at and the fan relearn, not the sensor
+import burner_features as F
+cd = tempfile.mkdtemp()
+resets = []
+mod.settings = F.Settings(cd, lambda *a: None)
+mod.fan = types.SimpleNamespace(reset=lambda: resets.append("fan"))
+mod.lux = types.SimpleNamespace(reset=lambda: resets.append("sensor"))
+evs, note0 = [], mod.note_event
+mod.note_event = lambda ev: (evs.append(ev), note0(ev))
+for bad in ({"parts": ["burner", "boiler"]}, {"parts": []}, {"parts": "burner"}, {"parts": [1]},
+            {"parts": ["start"]}, {"parts": ["burner"] * 4}, []):
+    check(f"cleaned: {json.dumps(bad)} refused", post("api/health/cleaned", bad)[0] == 400)
+check("cleaned: needs the X-Burner header", post("api/health/cleaned", {"parts": ["burner"]}, hdr=False)[0] == 403)
+check("cleaned: nothing reset by refused calls", not resets and mod.settings.get("health")["cleaned_at"] is None)
+s, j = post("api/health/cleaned", {"parts": ["fan", "burner"]})
+check("cleaned: burner + fan -> cleaned_at and the fan relearn, not the flame sensor",
+      s == 200 and j["parts"] == ["burner", "fan"] and resets == ["fan"]
+      and mod.settings.get("health")["cleaned_at"] and not mod.settings.get("lux")["reset_epoch"])
+at = mod.settings.get("health")["cleaned_at"]
+resets.clear()
+s, j = post("api/health/cleaned", {"parts": ["sensor"]})
+check("cleaned: sensor glass -> only the flame sensor relearns", s == 200 and resets == ["sensor"]
+      and mod.settings.get("health")["cleaned_at"] == at)
+check("cleaned: the marks say which parts", [m["parts"] for m in mod.settings.clean_marks()] == [["burner", "fan"], ["sensor"]])
+check("cleaned: the event says which parts", [e.get("parts") for e in evs if e.get("type") == "cleaned"] == [["burner", "fan"], ["sensor"]])
+resets.clear()
+s, j = post("api/health/cleaned", {})
+check("cleaned: no parts (an old page) = burner + fan", s == 200 and j["parts"] == ["burner", "fan"] and resets == ["fan"])
+mod.settings = mod.fan = mod.lux = None
+mod.note_event = note0
+import shutil
+shutil.rmtree(cd, ignore_errors=True)
+
 print("FAILED:", FAILED)
 sys.exit(1 if FAILED else 0)

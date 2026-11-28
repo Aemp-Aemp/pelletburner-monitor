@@ -63,7 +63,8 @@
 },
 "flame_field":"004",
 "health":{
-"cleaned_at":null
+"cleaned_at":null,
+"marks":[]
 },
 "ignitions":{
 "since":0

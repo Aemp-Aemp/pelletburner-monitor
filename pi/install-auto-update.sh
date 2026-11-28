@@ -48,10 +48,27 @@ cat > /etc/systemd/system/pelletpi-update.timer <<'EOF'
 Description=Pellet burner monitor: update check every night (hourly 01-05, waits while the burner works)
 [Timer]
 OnCalendar=*-*-* 01..05:10:00
-# also a few minutes after every start: tidies up an update that a power cut interrupted
-OnBootSec=5min
 RandomizedDelaySec=30min
 Persistent=false
+[Install]
+WantedBy=timers.target
+EOF
+
+# a few minutes after every start: tidies up an update that a power cut interrupted; never installs
+cat > /etc/systemd/system/pelletpi-update-boot.service <<'EOF'
+[Unit]
+Description=Pellet burner monitor: tidy up an interrupted update after a start
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pelletpi-update boot
+EOF
+
+cat > /etc/systemd/system/pelletpi-update-boot.timer <<'EOF'
+[Unit]
+Description=Pellet burner monitor: tidy up an interrupted update a few minutes after a start
+[Timer]
+OnBootSec=5min
 [Install]
 WantedBy=timers.target
 EOF
@@ -69,7 +86,7 @@ Environment=PELLETPI_REQ=$APP/data/update-request
 ExecStart=/usr/local/bin/pelletpi-update check
 EOF
 
-# The page's buttons leave data/update-request (one word: check, retry or back); this starts the updater.
+# The page's buttons leave data/update-request (one word: check, install, retry or back); this starts the updater.
 cat > /etc/systemd/system/pelletpi-update-check.path <<EOF
 [Unit]
 Description=Pellet burner monitor: watch for the page's update request
@@ -82,7 +99,7 @@ EOF
 
 mkdir -p "$APP/data"
 systemctl daemon-reload
-systemctl enable pelletpi-update.timer pelletpi-update-check.path
+systemctl enable pelletpi-update.timer pelletpi-update-boot.timer pelletpi-update-check.path
 # restarted, so that changed units take effect now (a running update is not stopped by this)
 systemctl restart pelletpi-update.timer pelletpi-update-check.path
 # the Wi-Fi watchdog follows the program too (NO_WIFI_WATCHDOG=1 leaves it out); a failure here never stops the update

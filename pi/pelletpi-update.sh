@@ -2,8 +2,13 @@
 # Pellet burner monitor - safe update (runs on the Pi, as root). Installed by pi/install-auto-update.sh.
 #
 #   pelletpi-update auto    nightly timer: check, and install when auto-update is on
-#   pelletpi-update check   the page's buttons: "check" only looks, "install" installs now (also when auto-update is off).
-#                           The page leaves one word in data/update-request: check, retry or back.
+#   pelletpi-update boot    a few minutes after the Pi starts: only tidies up a run a power cut interrupted, never
+#                           installs (an "auto" run in the first hour after a start, outside 01-06, counts as this)
+#   pelletpi-update check   the page's buttons. The page leaves one word in data/update-request (routes
+#                           /api/update/check, /install, /retry, /back): "check" only looks, "install" installs now
+#                           (also when auto-update is off), "retry" and "back" as below.
+#                           The switch "Automatic updates at night" (/api/update/auto-on, /auto-off) writes
+#                           data/update-auto ("on" / "off"), read on every run.
 #   pelletpi-update now     the same as check, by hand
 #   pelletpi-update retry   install the newest release also when it failed here before
 #   pelletpi-update back    go back to the version from before the last update
@@ -31,8 +36,8 @@
 # - A release whose build failed 3 times is skipped until "Try again".
 # - The data folder is never touched. The log is /var/lib/pelletpi/update.log (a copy is written to
 #   data/update.log for the page); data/update.json feeds the page.
-# - Off: AUTO_UPDATE=no in pelletpi/settings.txt on the card's boot drive, or in /etc/default/pelletpi-update.
-#   The page's button still works then.
+# - Off: the page's switch (data/update-auto), or AUTO_UPDATE=no in pelletpi/settings.txt on the card's boot drive
+#   (that one always wins), or in /etc/default/pelletpi-update. The page's Install button still works then.
 set -eEuo pipefail
 export GIT_TERMINAL_PROMPT=0
 
@@ -53,6 +58,8 @@ BUILD_TRIES=3        # a release whose build failed this often is skipped until 
 BUILD_TIMEOUT=3600   # a build that takes longer than this (seconds) counts as failed
 KEEP_DAYS=14         # how long the previous version is kept for "go back"
 MIN_FREE_KB=500000   # free space needed before a download
+BOOT_UPTIME=3600     # an "auto" run this soon after the Pi started, outside 01:00-06:00, is a "boot" run
+HOUR=""              # the hour for that rule; empty = the clock's (the tests set it)
 APP=""
 REPO_URL=""
 AUTO_UPDATE=yes
@@ -69,9 +76,15 @@ if [ -n "$APP" ] && [ -f "$APP/data/update-auto" ] && [ ! -L "$APP/data/update-a
 fi
 if [ "$CARD_AUTO" = no ]; then AUTO_UPDATE=no; fi
 case "$MODE" in
-  auto | check | now | retry | back) ;;
-  *) echo "usage: pelletpi-update auto|check|now|retry|back"; exit 2 ;;
+  auto | boot | check | now | retry | back) ;;
+  *) echo "usage: pelletpi-update auto|boot|check|now|retry|back"; exit 2 ;;
 esac
+if [ "$MODE" = auto ]; then   # an older timer (OnBootSec) starts "auto" after a reboot: never install in the daytime
+  up=$(cut -d. -f1 /proc/uptime 2>/dev/null || true)
+  case "$up" in '' | *[!0-9]*) up=999999 ;; esac
+  hr=${HOUR:-$(date +%H)}; hr=${hr#0}
+  if [ "$up" -lt "$BOOT_UPTIME" ] && { [ "$hr" -lt 1 ] || [ "$hr" -ge 6 ]; }; then MODE=boot; fi
+fi
 if [ -z "$APP" ] || [ ! -d "$APP" ]; then
   # the page's request is removed all the same: else the path unit starts this again and again
   if [ "$MODE" = check ]; then rm -f "${PELLETPI_REQ:-/nonexistent}" "${APP:-/nonexistent}/data/update-request" 2>/dev/null || true; fi
@@ -446,10 +459,12 @@ wait_safe() {  # wait_safe LIMIT: until the burner is off or waiting (1 = gave u
   done
 }
 limit=$WAIT_PAGE
-if [ "$MODE" = auto ]; then limit=$WAIT_AUTO; fi
+if [ "$MODE" = auto ] || [ "$MODE" = boot ]; then limit=$WAIT_AUTO; fi
+TIDIED=""
 
 # ---------------------------------------------------------------- 0) a run that was cut short (power cut)
 if [ -f "$JOURNAL" ]; then
+  TIDIED=1
   KIND=$(jget KIND); FROM=$(jget FROM); TO=$(jget TO); PREV=$(jget PREV)
   OLD_IMAGE=$(jget OLD_IMAGE); IMAGE_NAME=$(jget IMAGE_NAME); SWAPPED=$(jget SWAPPED)
   if { [ "$KIND" != install ] && [ "$KIND" != back ]; } || [ -z "$OLD_IMAGE" ] || [ -z "$IMAGE_NAME" ]; then
@@ -511,6 +526,12 @@ if [ -f "$KEPT" ]; then
     drop_kept
     log "the kept previous version is older than $KEEP_DAYS days: removed"
   fi
+fi
+# the start-up run only tidies up: updates are looked for and installed at night (or with the page's button)
+if [ "$MODE" = boot ]; then
+  if [ -n "$TIDIED" ]; then PHASE=idle; RESULT="tidied up after a cut-short update; running $CURRENT"; write_json; fi
+  log "start-up run: nothing installed (updates come at night, 01:00-06:00)"
+  exit 0
 fi
 
 # ---------------------------------------------------------------- go back to the previous version

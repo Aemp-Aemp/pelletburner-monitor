@@ -4,6 +4,20 @@ What changed in each version of the pellet burner monitor. The newest version is
 The version is shown at the bottom of both pages, in Settings → About this monitor and in `/status.json` (`"version"`).
 A release is a git tag like `v1.0.0`; the Pi's auto-update only installs release tags.
 
+## 1.0.10
+
+### New
+- "I cleaned the burner" asks what you cleaned: burner, herd and ash / fan and chamber / flame sensor glass. Only those parts learn again.
+
+### Better
+- Phone: a start or stop that is more than 5 minutes old (for example after the internet was down) is not acted on; you get "Too old: send it again". Repeats act once.
+- Phone alerts: alarms and other important messages are kept while the internet is down and sent when it is back, with the time they happened. The daily summary is marked done only when it was sent.
+- "Monitor updated" has its own slot, so a restart message can no longer swallow it.
+- The automatic update installs only at night; after a restart it only tidies up an interrupted update.
+- Home Assistant: the old auto-start schedule switch is gone; "last lighting time" is the time to flame of real lightings; the start counter is no longer seen as a meter reset after a power cut.
+- Raspberry Pi: the status says "hotspot" when the Pi is on its own setup Wi-Fi; the Wi-Fi watchdog sees the scan failures seen on a real Pi; records after a power cut are no longer lost.
+- Docs: what you need (USB-RS-485 adapter, cut cable to J4), the install order (IO BOKS on after the page opens), the IO BOKS menu path, unzipping on Windows, when pelletpi.local does not open, getting help, cleaning, and a Danish "Start her".
+
 ## 1.0.9
 
 ### Better

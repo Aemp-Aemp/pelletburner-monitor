@@ -22,6 +22,27 @@ from burner_common import (STATE_LABELS, STATES_ACTIVE as RUNNING, ALARM_NEVER_A
 _HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
+# "I cleaned the burner": the parts the owner can tick. burner = burner pot (herd) and ash, fan = fan and combustion
+# chamber, sensor = the flame sensor glass. Nothing else is accepted.
+CLEAN_PARTS = ("burner", "fan", "sensor")
+CLEAN_KEEP = 8
+
+
+def clean_marks(health):
+    """The "I cleaned ..." marks from the health settings, oldest first: [{"t": epoch, "parts": [...]}]. An old
+    settings file has only cleaned_at (no parts): that one counts as burner + fan, which the old button meant."""
+    h = health if isinstance(health, dict) else {}
+    marks = [dict(m) for m in (h.get("marks") or []) if isinstance(m, dict)]
+    old = h.get("cleaned_at")
+    if not marks and isinstance(old, (int, float)) and not isinstance(old, bool) and old > 0:
+        marks = [{"t": old, "parts": ["burner", "fan"]}]
+    return marks
+
+
+def clean_marks_of(settings):
+    return clean_marks((settings.get("health") if settings else None) or {})
+
+
 class _Bad(ValueError):
     """A wrong value in a settings update: its text is the plain answer to the web page."""
 
@@ -180,7 +201,9 @@ DEFAULTS = {
     "pellets": {"batches": [], "stock": None, "reserve_kg": 150, "corrections": []},
     "ash": {"emptied_at": None, "ash_pct": 0.7, "bin_kg": 0, "learn": []},
     "ignitions": {"since": 0},
-    "health": {"cleaned_at": None},
+    # cleaned_at = the burner (pot) and ash were last cleaned: time to flame and failed starts learn again from it.
+    # marks = the "I cleaned ..." marks, which parts each time (CLEAN_PARTS), newest CLEAN_KEEP, for "Did the change help?"
+    "health": {"cleaned_at": None, "marks": []},
     # outside temperature (optional): Open-Meteo, free, no key. Only the place's rounded coordinates are sent.
     "weather": {"enabled": False, "name": "", "cc": "", "lat": None, "lon": None},
     # phone alerts (optional, off): push messages through ntfy. The topic works like a password - anyone who knows
@@ -293,6 +316,12 @@ class Settings:
             hc = (obj.get("health") or {}).get("cleaned_at") if isinstance(obj.get("health"), dict) else None
             if isinstance(hc, (int, float)):
                 self.data["health"]["cleaned_at"] = hc
+            hm = (obj.get("health") or {}).get("marks") if isinstance(obj.get("health"), dict) else None
+            if isinstance(hm, list):
+                self.data["health"]["marks"] = [
+                    {"t": m["t"], "parts": [p for p in CLEAN_PARTS if p in m["parts"]]} for m in hm
+                    if isinstance(m, dict) and isinstance(m.get("t"), (int, float)) and isinstance(m.get("parts"), list)
+                    and any(p in CLEAN_PARTS for p in m["parts"])][-CLEAN_KEEP:]
             mm = obj.get("minmode")
             if isinstance(mm, dict):
                 for k in ("last", "off_at"):
@@ -751,6 +780,25 @@ class Settings:
         with self.lock:
             self.data.setdefault(sect, {})[key] = value
             self.save()
+
+    def clean_marks(self):
+        return clean_marks(self.data.get("health"))
+
+    def mark_cleaned(self, parts, now=None):
+        """The owner cleaned these parts (CLEAN_PARTS). "burner" moves cleaned_at (time to flame, failed starts
+        learn again). The fan and the flame sensor relearn through their own monitors (the caller does that).
+        Returns the mark."""
+        now = round(now or time.time())
+        parts = [p for p in CLEAN_PARTS if p in parts]
+        with self.lock:
+            marks = self.clean_marks()
+            h = self.data.setdefault("health", {})
+            mark = {"t": now, "parts": parts}
+            h["marks"] = (marks + [mark])[-CLEAN_KEEP:]
+            if "burner" in parts:
+                h["cleaned_at"] = now
+            self.save()
+        return mark
 
     def note_boiler_type(self, value, now=None):
         """A cfg read: the boiler's type setting (033 KEDEL TYPE). When it changes, the lighting "usual" starts a
@@ -2118,15 +2166,20 @@ class Optimiser:
 
     def health(self, days=None):
         """Burner health against this burner's OWN normal - no numbers taken from one particular boiler, works
-        offline. Normal = the first starts / burning days after the last "burner cleaned" mark, now = the latest
-        ones. Checks: minutes to flame, flame at the start, lightings that failed, flame at the same power while
-        running. Each check says "learning" until there is enough of its own data."""
+        offline. Normal = the first starts / burning days after the last cleaning, now = the latest ones. Checks:
+        minutes to flame, flame at the start, lightings that failed, flame at the same power while running. Each
+        check says "learning" until there is enough of its own data. Time to flame and failed starts start again at
+        the "burner cleaned" mark (cleaned_at); the two flame checks only when the flame sensor glass was cleaned
+        (the flame sensor's relearn, lux reset_epoch): cleaning the pot does not change what the sensor sees."""
         cleaned = (self.settings.get("health") or {}).get("cleaned_at") or 0
+        sensor = (self.settings.get("lux") or {}).get("reset_epoch") or 0
         ig = getattr(self.mod, "ignitions", None)
-        recs = [r for r in (list(ig.records) if ig else [])
-                if (r.get("epoch") or 0) >= cleaned and not r.get("relight") and not resumed(r)]
+        allr = [r for r in (list(ig.records) if ig else []) if not r.get("relight") and not resumed(r)]
+        recs = [r for r in allr if (r.get("epoch") or 0) >= cleaned]
         # the boiler type changed: lighting is judged against the starts since then (older ones until 3 lit)
         ok = [r for r in baseline_split(recs, baseline_since(self.settings))[0] if lit(r)]
+        ok_fl = [r for r in baseline_split([r for r in allr if (r.get("epoch") or 0) >= sensor],
+                                           baseline_since(self.settings))[0] if lit(r)]
         items = []
 
         def cmp(key, vals, unit, worse_when_up, rel, absd, need=6):
@@ -2151,7 +2204,7 @@ class Optimiser:
             items.append({"key": "to_flame", "state": "worse" if now - typ > max(1.0, 0.3 * typ) else "ok",
                           "now": round(now, 1), "normal": typ, "unit": "min", "n": len(vals),
                           "last": round(vals[-1], 1)})     # the newest start that lit (the pages show it as "now")
-        cmp("start_flame", [float(r["peak_lux"]) for r in ok if r.get("peak_lux")], "", False, 0.15, 10)
+        cmp("start_flame", [float(r["peak_lux"]) for r in ok_fl if r.get("peak_lux")], "", False, 0.15, 10)
         last = recs[-10:]
         failed = sum(1 for r in last if r.get("result") == "failed")
         items.append({"key": "failed", "state": "learning" if len(last) < 5 else ("worse" if failed >= 2 else "ok"),
@@ -2159,7 +2212,7 @@ class Optimiser:
         # flame at the same power while running: the latest 2 burning days against the days before them
         if days is None:
             days = self.report_days()
-        cday = datetime.date.fromtimestamp(cleaned).isoformat() if cleaned else ""
+        cday = datetime.date.fromtimestamp(sensor).isoformat() if sensor else ""
         burn = [d for d in days if d.get("running_s", 0) > 1800 and d.get("day", "") >= cday]
         if len(burn) < 4:
             items.append({"key": "run_flame", "state": "learning", "n": len(burn), "need": 4, "unit": "days"})
@@ -2184,7 +2237,9 @@ class Optimiser:
         known = [i for i in items if i["state"] != "learning"]
         worse = [i for i in known if i["state"] == "worse"]
         status = "learning" if not known else ("clean" if len(worse) >= 2 else ("watch" if worse else "ok"))
-        return {"status": status, "items": items, "cleaned_at": cleaned or None, "checks": self.checks(items, days)}
+        marks = clean_marks_of(self.settings)
+        return {"status": status, "items": items, "cleaned_at": cleaned or None, "sensor_at": sensor or None,
+                "last_clean": marks[-1] if marks else None, "checks": self.checks(items, days)}
 
     def checks(self, items, days):
         """THE burner-health checklist, the one every page and the share picture show: time to flame, flame sensor,
@@ -2329,7 +2384,7 @@ class Optimiser:
             recs = [r for r in (list(ig.records) if ig else []) if (r.get("epoch") or 0) >= since]
             change = change_help(recs, self.report_days() if wx is None else sums, rows if wx is not None else (),
                                  (self.settings.get("pellets") or {}).get("batches") or [],
-                                 (self.settings.get("health") or {}).get("cleaned_at"), wx, now)
+                                 clean_marks_of(self.settings), wx, now)
         except Exception as e:
             self.log(f"# change graph error: {e!r}")
         return change, wx
@@ -2485,7 +2540,9 @@ def _net(rows):
 
 def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
     """The changes, oldest first: [{"t": epoch, "parts": [...]}]. parts: {"k": "cfg", "field", "old", "new"},
-    {"k": "batch", "name"}, {"k": "cleaned"}. starts = the start records (relights included, oldest first)."""
+    {"k": "batch", "name"}, {"k": "cleaned", "what": [parts cleaned]}. starts = the start records (relights
+    included, oldest first). cleaned_at = the clean marks ([{"t", "parts"}], Settings.clean_marks()), or one epoch
+    (an old mark without parts = burner + fan)."""
     starts = sorted((r for r in starts if r.get("epoch")), key=lambda r: r["epoch"])
     rows = sorted((r for r in cfg_rows if isinstance(r.get("time"), (int, float)) and isinstance(r.get("field"), str)
                    and r["field"] != "011"), key=lambda r: r["time"])
@@ -2520,8 +2577,11 @@ def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
     for b in batches or []:
         if isinstance(b, dict) and isinstance(b.get("since"), (int, float)) and b.get("name"):
             ev.append((b["since"], [{"k": "batch", "name": str(b["name"])[:40]}]))
-    if isinstance(cleaned_at, (int, float)) and cleaned_at > 0:
-        ev.append((cleaned_at, [{"k": "cleaned"}]))
+    if isinstance(cleaned_at, (int, float)) and not isinstance(cleaned_at, bool):
+        cleaned_at = [{"t": cleaned_at, "parts": ["burner", "fan"]}]
+    for m in cleaned_at or []:
+        if isinstance(m, dict) and isinstance(m.get("t"), (int, float)) and m["t"] > 0:
+            ev.append((m["t"], [{"k": "cleaned", "what": [p for p in CLEAN_PARTS if p in (m.get("parts") or [])]}]))
     ev.sort(key=lambda x: x[0])
     out = []
     for t, parts in ev:
@@ -2529,8 +2589,11 @@ def change_points(starts, cfg_rows=(), batches=(), cleaned_at=None):
             have = out[-1]["parts"]
             for p in parts:                     # the same field twice: one part from the first old to the last new
                 same = next((q for q in have if q["k"] == "cfg" and p["k"] == "cfg" and q["field"] == p["field"]), None)
+                cl = next((q for q in have if q["k"] == "cleaned" and p["k"] == "cleaned"), None)
                 if same:
                     same["new"] = p["new"]
+                elif cl:                        # two clean marks close together: one "cleaned" with all the parts
+                    cl["what"] = [x for x in CLEAN_PARTS if x in cl["what"] or x in p["what"]]
                 elif p not in have:
                     have.append(p)
             out[-1]["parts"] = [q for q in have if q["k"] != "cfg" or str(q["old"]) != str(q["new"])]

@@ -34,8 +34,8 @@ from burner_common import parse_jsonl_line  # noqa: E402  (tolerant of NUL bytes
 
 def _clean_line(line):
     """A .jsonl line as it can be copied: NUL bytes and a cut start removed; None for a line with no record."""
-    if "\x00" in line:
-        line = line.strip().strip("\x00").rsplit("\x00", 1)[-1]
+    if "\x00" in line:                             # the last piece between NUL runs that is a whole record
+        line = next((x for x in reversed(line.split("\x00")) if parse_jsonl_line(x) is not None), "")
     line = line.strip()
     return line + "\n" if line and parse_jsonl_line(line) is not None else None
 

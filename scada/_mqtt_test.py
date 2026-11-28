@@ -281,7 +281,7 @@ def main():
             "version", "pellets_home", "pellets_days_left", "pellets_per_day", "ash_bin_pct", "ash_kg", "health",
             "health_to_flame", "health_failed", "last_start_min", "last_start_result", "last_start_at", "next_start",
             "pi_cpu_c", "pi_load", "pi_disk_free", "pi_mem_free", "pi_uptime", "pi_wifi", "pi_internet",
-            "pi_undervolt", "pi_usb_adapter", "ash_out", "ash_turns_24h", "schedule", "heating_plan", "vvb"}
+            "pi_undervolt", "pi_usb_adapter", "ash_out", "ash_turns_24h", "heating_plan", "vvb"}
     check("A all expected entities discovered", want <= objs, f"missing {sorted(want - objs)}")
     check("A no flue entity without a flue sensor", cfg("sensor", "flue_c") is None)
     check("A no start/stop buttons without --allow-remote-start", cfg("button", "start") is None and cfg("button", "stop") is None)
@@ -304,8 +304,13 @@ def main():
     check("A Pi health values", pi["cpu_c"] == 41.5 and pi["uptime_h"] == 2.0 and pi["internet_ok"] is True
           and pi["undervolt"] is False and pi["usb_adapter"] is True)
     numeric = [c for comp, _, c in ents if comp == "sensor" and c.get("state_class")]
-    check("A long-term statistics: measurement / total_increasing set", len(numeric) >= 20
-          and cfg("sensor", "ignitions")["state_class"] == "total_increasing")
+    check("A long-term statistics: measurement / total set", len(numeric) >= 20
+          and cfg("sensor", "ignitions")["state_class"] == "total")          # the boiler's counter can go down
+    check("A the auto-start schedule's old entities are removed (empty retained config)",
+          all(snap.get(f"homeassistant/{c}/burner/{o}/config") == "" for c, o in
+              (("switch", "schedule"), ("binary_sensor", "schedule_on"), ("sensor", "schedule_status"))))
+    r = send("schedule", "ON", "cmd/schedule")
+    check("A cmd/schedule is gone: refused", r.get("ok") is False and "unknown" in r.get("msg", ""), str(r))
     r = send("run_mode", "start", "start")
     check("A MQTT start refused when --allow-remote-start is off", r.get("ok") is False and "allow-remote-start" in r.get("msg", ""), str(r))
     r = send("heating_plan", "OFF", "heating_plan")

@@ -28,6 +28,9 @@ SLACK_S = 5                   # a message this much older than the start still c
 SEEN_S = 13 * 3600            # message ids are remembered this long (ntfy keeps messages 12 h); older = "old"
 SEEN_MAX = 20000              # ... but never more than this many
 CLOCK_WARN_S = 120            # log once when the Pi clock is this far off the ntfy server's
+MAX_AGE_S = 300               # start / stop / code replies older than this (server time) are not acted on
+OLD_TOLD_S = 60               # "too old" answered at most once a minute (a backlog arrives as a burst)
+DUP_S = 30                    # the same start / stop again this soon after it was asked: no new code
 
 
 def ascii_digits(text):
@@ -79,6 +82,9 @@ TEXTS = {
         "da": ("Ikke forstået", "Ikke forstået. Skriv: start, stop eller status. Til start/stop får du en kode – "
                                 "svar med: <kode> <din PIN>. Monitoren sender aldrig din PIN; du skriver den kun i "
                                 "dit svar. Koden er ny hver gang.")}),
+    "too_old": ("default", "hourglass", {
+        "en": ("Too old", "Too old: send it again."),
+        "da": ("For gammel", "For gammel: send den igen.")}),
     "status": ("low", "information_source", {
         "en": ("Boiler status", "{text}"),
         "da": ("Kedel-status", "{text}")}),
@@ -107,7 +113,7 @@ class PhoneCommands:
         self.fails = 0
         self.locked_until = 0.0
         self.lock_told = False
-        self.help_t = self.status_t = -1e12       # when "Not understood" / "status" was last answered
+        self.help_t = self.status_t = self.too_old_t = -1e12   # when "Not understood" / "status" / "too old" was answered
         self.listening = False
         self.last_error = None
         self._resp = None
@@ -254,14 +260,22 @@ class PhoneCommands:
             return "old"
         if not self.active():
             return "off"
-        return self.command(str(msg.get("message") or "").strip()[:100])
+        return self.command(str(msg.get("message") or "").strip()[:100], age=self._srv_now() - t)
 
-    def command(self, text):
+    def command(self, text, age=0.0):
+        """age: how old the message is (its own time against the server's clock). A start / stop or a code reply
+        older than MAX_AGE_S (e.g. sent while the Pi was offline) is never acted on: the owner must send it again."""
         now = self.clock()
         with self.lock:
             word = WORDS.get(" ".join(text.lower().split()).strip(" .!?\"'“”"))
             if word == "status":                         # read-only: no code, no PIN; works while locked too
                 return self._status(now)
+            if age > MAX_AGE_S and (word or _REPLY.match(" ".join(ascii_digits(text).split()))):
+                if now - self.too_old_t >= OLD_TOLD_S:   # a backlog burst: one answer
+                    self.too_old_t = now
+                    self.reply("too_old")
+                    self.log(f"# phone commands: a command {age / 60:.0f} min old ignored - sent again?")
+                return "too_old"
             if now < self.locked_until:
                 if self.lock_told:
                     return "locked"
@@ -274,8 +288,11 @@ class PhoneCommands:
                     self.reply("refused_alarm")
                     self.log(f"# phone commands: {word} refused - boiler in alarm")
                     return "alarm"
+                p = self.pending
+                if p and p["cmd"] == word and now < p["asked"] + DUP_S:
+                    return "dup"                         # the same ask again (a burst): keep the code already sent
                 code = f"{secrets.randbelow(10000):04d}"
-                self.pending = {"cmd": word, "code": code, "until": now + CODE_S}    # a new ask replaces the old
+                self.pending = {"cmd": word, "code": code, "until": now + CODE_S, "asked": now}  # a new ask replaces the old
                 self.reply("ask_" + word, code=code)
                 self.log(f"# phone commands: {word} asked, waiting for code and PIN")
                 return "asked"
@@ -346,7 +363,8 @@ class PhoneCommands:
             if st == 6 or al:
                 lines.append(w["alarm"].format(a=N.alarm_name(al, lang)))
         ig = getattr(self.mod, "ignitions", None)
-        recs = [r for r in list(getattr(ig, "records", None) or []) if isinstance(r, dict) and not r.get("relight")]
+        recs = [r for r in list(getattr(ig, "records", None) or []) if isinstance(r, dict) and not r.get("relight")
+                and not F.resumed(r)]                     # real starts only, like Home Assistant's "Last start"
         if recs and recs[-1].get("epoch"):
             ep = recs[-1]["epoch"]
             d = datetime.datetime.fromtimestamp(ep)

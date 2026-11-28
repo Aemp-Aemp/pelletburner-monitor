@@ -14,10 +14,10 @@ Nothing in here ever crashes the responder: every disk / network error is logged
 import json, os, socket, struct, threading, time, datetime, glob, collections
 # the shared tables and helpers (one copy: burner_common.py); the old names stay usable from this module
 from burner_common import (STATE_LABELS, STATE_WORDS, ALARM_TEXT, SOURCES, iso as _now_iso, to_float as _num,
-                           rows_of, read_json, write_json_atomic, parse_jsonl_line, open_append,
-                           write_failed, write_ok, append_jsonl)
+                           rows_of, read_json, write_json_atomic, parse_jsonl_line, parse_jsonl_records,
+                           open_append, write_failed, write_ok, append_jsonl)
 
-MONITOR_VERSION = "1.0.9"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
+MONITOR_VERSION = "1.0.10"   # the top entry of CHANGELOG.md; on the pages, in /status.json and in Home Assistant
 
 # ============================================================================ who started / stopped it
 # SOURCES (burner_common) is the one table of "source" names: the `source` field on a start / stop event
@@ -475,26 +475,6 @@ class CfgSync:
             self.status = f"file error: {e}"
             self.log(f"# cfg-sync: cannot use {self.path} ({e}) - keeping the previous values")
             return False
-
-    def set_values(self, changes):
-        """Update desired values (e.g. from MQTT) and write the file back atomically. Returns (ok, msg)."""
-        bad = {k: v for k, v in changes.items() if not self.valid(k, v)}
-        if bad:
-            return False, f"refused (key 000-041, number, |value| <= 100000): {bad}"
-        co = {k for k in changes if k in self.check_only}
-        if co:
-            return False, f"{sorted(co)} are check-only (set them on the boiler's screen)"
-        with self.lock:
-            self.desired.update(changes)
-            self.stuck = set()
-            try:                                                # a power cut never leaves half a file
-                write_json_atomic(self.path, {"cfg_data_1": dict(sorted(self.desired.items())),
-                                              "check_only": sorted(self.check_only)}, indent=1)
-                self.mtime = os.path.getmtime(self.path)
-            except OSError as e:
-                self.log(f"# cfg-sync: could not save {self.path} ({e})")
-            self.request_check("desired values changed")
-        return True, "saved"
 
     def request_check(self, why):
         self.want_dump, self.rounds = True, 0
@@ -969,7 +949,7 @@ def net_trouble(data_dir, now=None, cache_s=60):
                 lines = fh.read().decode("utf-8", "replace").splitlines()
         except OSError:
             continue
-        recs += [r for r in map(parse_jsonl_line, lines) if isinstance(r, dict) and _num(r.get("epoch"))]
+        recs += [r for ln in lines for r in parse_jsonl_records(ln) if _num(r.get("epoch"))]
     recs.sort(key=lambda r: r["epoch"])
     out = None
     if recs and now - recs[-1]["epoch"] <= 600:
@@ -1022,9 +1002,8 @@ class MqttBridge:
       <p>/pi             JSON: Raspberry Pi health from pi-health-*.jsonl (retained, only when that file exists)
       <p>/cfg            JSON cfg_data_1 (retained, read only)
       <p>/event          transitions, alarms, commands, cfg-sync (not retained)
-      <p>/prealarm, /cfg_sync, /schedule, /warm, /auto_reset, /pellets, /vvb, /ash_plate, /lux, /warning (retained)
+      <p>/prealarm, /cfg_sync, /warm, /auto_reset, /pellets, /vvb, /ash_plate, /lux, /warning (retained)
       <p>/cmd/run_mode   <- 'start' / 'stop'  (same gate as the web page: needs --allow-remote-start; refused in ALARM)
-      <p>/cmd/schedule   <- ON / OFF   auto-start windows on/off (a setting of this program, not of the boiler)
       <p>/cmd/heating_plan <- ON / OFF heating plan on/off (a setting of this program, not of the boiler)
       <p>/cmd/vvb        <- hot-water tank temperature (only when that sensor input is turned on in the settings)
     Boiler settings are never changed over MQTT (there is no cmd/cfg).
@@ -1187,7 +1166,8 @@ class MqttBridge:
         add("binary_sensor", "igniter", "Igniter", S, "igniter_on", device_class="heat")
         add("sensor", "silo_kg", "Silo content", S, "silo_kg", unit_of_measurement="kg", device_class="weight",
             state_class="measurement", icon="mdi:silo")
-        add("sensor", "ignitions", "Ignitions", S, "ignitions", state_class="total_increasing", icon="mdi:counter")
+        # the boiler's own counter can go down after a power cut: "total", not "total_increasing"
+        add("sensor", "ignitions", "Ignitions", S, "ignitions", state_class="total", icon="mdi:counter")
         add("binary_sensor", "link", "Boiler link", S, "connected", device_class="connectivity", entity_category=DIAG)
         add("sensor", "data_age_s", "Data age", S, "data_age_s", unit_of_measurement="s", device_class="duration",
             state_class="measurement", entity_category=DIAG)
@@ -1244,8 +1224,6 @@ class MqttBridge:
         # features that were there before (same unique ids, so Home Assistant keeps its history)
         add("sensor", "cfg_sync", "Settings sync", f"{p}/cfg_sync", "status", active=bool(self.cfg_sync),
             json_attributes_topic=f"{p}/cfg_sync", icon="mdi:sync")
-        add("sensor", "schedule_status", "Auto-start status", f"{p}/schedule", "code", active=bool(mod.settings),
-            json_attributes_topic=f"{p}/schedule", icon="mdi:calendar-clock")
         add("sensor", "lux_status", "Flame sensor", f"{p}/lux", "status", active=bool(mod.lux),
             json_attributes_topic=f"{p}/lux", icon="mdi:eye-check")
         add("sensor", "auto_reset", "Saved by auto alarm reset", f"{p}/auto_reset", "saves", uid="auto_reset_saves",
@@ -1265,12 +1243,6 @@ class MqttBridge:
         add("sensor", "last_warning", "Last warning", f"{p}/warning", None, tpl="{{ value_json.text[:250] }}",
             json_attributes_topic=f"{p}/warning", icon="mdi:alert-outline")
         # commands: switches for this program's own plans, buttons for start / stop (same gate as the web page)
-        add("switch", "schedule", "Auto-start schedule", f"{p}/schedule", None, uid="schedule_switch",
-            active=bool(mod.settings) and cmds, command_topic=f"{p}/cmd/schedule",
-            tpl="{{ 'ON' if value_json.enabled else 'OFF' }}", payload_on="ON", payload_off="OFF",
-            icon="mdi:calendar-clock")
-        add("binary_sensor", "schedule_on", "Auto-start schedule", f"{p}/schedule", "enabled",
-            active=bool(mod.settings) and not cmds, icon="mdi:calendar-clock")
         add("switch", "heating_plan", "Heating plan", f"{p}/warm", None, uid="heating_plan_switch",
             active=warm and bool(mod.settings) and cmds, command_topic=f"{p}/cmd/heating_plan",
             tpl="{{ 'ON' if value_json.enabled else 'OFF' }}", payload_on="ON", payload_off="OFF",
@@ -1280,6 +1252,10 @@ class MqttBridge:
         for cmd, name, icon in (("start", "Start burner", "mdi:play"), ("stop", "Stop burner", "mdi:stop")):
             add("button", cmd, name, None, None, uid=f"btn_{cmd}", active=cmds and self.allow_remote,
                 command_topic=f"{p}/cmd/run_mode", payload_press=cmd, icon=icon)
+        # the auto-start schedule (start windows) has no page and is off: its old entities are removed from HA
+        # (an empty retained config), so HA can not turn it back on
+        for comp, obj in (("switch", "schedule"), ("binary_sensor", "schedule_on"), ("sensor", "schedule_status")):
+            add(comp, obj, None, active=False)
         avail = {"availability_topic": f"{p}/availability", "payload_available": "online",
                  "payload_not_available": "offline"}
         dev = self._dev()
@@ -1296,6 +1272,7 @@ class MqttBridge:
         d = self.disc.rstrip("/")
         for comp, obj, cfg in self.entities():
             self.c.publish(f"{d}/{comp}/{self.node}/{obj}/config", cfg if cfg is not None else b"", retain=True)
+        self.c.publish(f"{self.p}/schedule", b"", retain=True)    # the old auto-start state topic: cleared
         self._disc_sig = self._signature()
 
     # ------------------------------------------------------------------ state
@@ -1350,12 +1327,6 @@ class MqttBridge:
             self.c.publish(f"{self.p}/cfg", cfg["raw"], retain=True)
         if snap.get("cfg_sync"):
             self.c.publish(f"{self.p}/cfg_sync", snap["cfg_sync"], retain=True)
-        if self.mod.settings and snap.get("schedule"):
-            sc = snap["schedule"]
-            self.c.publish(f"{self.p}/schedule", {
-                "enabled": bool(self.mod.settings.get("schedule").get("enabled")),
-                "code": sc["status"].get("code"), "text": sc["status"].get("text"),
-                "starts_today": sc.get("starts_today"), "blocked": sc.get("blocked")}, retain=True)
         if snap.get("warm"):
             wm = snap["warm"]
             self.c.publish(f"{self.p}/warm", {"enabled": bool(wm.get("enabled")),
@@ -1424,14 +1395,16 @@ class MqttBridge:
                         out["health_detail"][i["key"]] = {k: v for k, v in i.items() if k != "key"}
         ig = getattr(m, "ignitions", None)
         if ig:
-            recs = [r for r in list(ig.records) if not r.get("relight")]
+            from burner_features import lit, resumed, flame_min      # (burner_features imports this module)
+            # real starts only: no relights, no starts that went on burning without lighting (resumed)
+            recs = [r for r in list(ig.records) if not r.get("relight") and not resumed(r)]
             if recs:
                 last = recs[-1]
                 out["last_start_result"] = last.get("result")
                 out["last_start_at"] = _iso_tz(last.get("epoch"))
                 out["last_start_source"] = last.get("source")
                 out["last_start_by"] = source_text(last.get("source"))
-                out["last_start_min"] = last.get("minutes") if last.get("result") == "ok" else None
+                out["last_start_min"] = flame_min(last) if lit(last) else None     # time to flame
         warm = getattr(m, "warm", None)
         if warm:
             wf = safe(warm.feed)
@@ -1516,20 +1489,18 @@ class MqttBridge:
             # the web page's own gate (--allow-remote-start), plus: never in ALARM (no automatic alarm reset)
             ok, msg, _ = self.mod.request_run_mode(cmd, "mqtt", from_hub=True)
             self._result(cmd, ok, msg)
-        elif sub in ("cmd/schedule", "cmd/heating_plan"):
-            what = "schedule" if sub == "cmd/schedule" else "warm"
-            if not self.mod.settings or (what == "warm" and not getattr(self.mod, "warm", None)):
+        elif sub == "cmd/heating_plan":
+            if not self.mod.settings or not getattr(self.mod, "warm", None):
                 self._result(sub[4:], False, "not available")
                 return
             on = self._on_off(text)
             if on is None:
                 self._result(sub[4:], False, "send ON or OFF")
                 return
-            ok, msg = self.mod.settings.update({what: {"enabled": on}})
-            name = "auto-start schedule" if what == "schedule" else "heating plan"
-            self.mod.note_event({"type": "settings", "epoch": time.time(), "ok": ok, "msg": f"{name} {'ON' if on else 'OFF'} (MQTT)",
-                                 "keys": [what]})
-            self._result(sub[4:], ok, f"{name} {'ON' if on else 'OFF'}: {msg}")
+            ok, msg = self.mod.settings.update({"warm": {"enabled": on}})
+            self.mod.note_event({"type": "settings", "epoch": time.time(), "ok": ok,
+                                 "msg": f"heating plan {'ON' if on else 'OFF'} (MQTT)", "keys": ["warm"]})
+            self._result(sub[4:], ok, f"heating plan {'ON' if on else 'OFF'}: {msg}")
             self.publish_state()
-        else:                                            # incl. the old cmd/cfg: boiler settings never change over MQTT
+        else:                    # incl. the old cmd/cfg and cmd/schedule: boiler settings never change over MQTT
             self._result(sub, False, "unknown command topic")

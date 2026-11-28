@@ -174,22 +174,30 @@ def median(vals):
 
 
 # ---------------------------------------------------------------------------- data files
-def parse_jsonl_line(line):
-    """One .jsonl line -> its dict, or None for an empty, broken or cut line. After a power cut a file can hold
-    a half line and a run of NUL bytes, with the next good record glued to the end of them: the text after the
-    last NUL is tried."""
+def parse_jsonl_records(line):
+    """The records (dicts) in one .jsonl line. After a power cut a line can start with a run of NUL bytes, or hold
+    a half record, NULs and the next good record glued together (sometimes a good one before the NULs too): every
+    piece between NUL runs is tried, broken or cut pieces are skipped."""
     if isinstance(line, bytes):
         line = line.decode("utf-8", "replace")
-    line = line.strip().strip("\x00").strip()
-    if "\x00" in line:
-        line = line.rsplit("\x00", 1)[1].strip()
-    if not line:
-        return None
-    try:
-        obj = json.loads(line)
-    except ValueError:
-        return None
-    return obj if isinstance(obj, dict) else None
+    out = []
+    for piece in line.split("\x00"):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            obj = json.loads(piece)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            out.append(obj)
+    return out
+
+
+def parse_jsonl_line(line):
+    """One .jsonl line -> its (last good) dict, or None for an empty, broken or cut line (see parse_jsonl_records)."""
+    recs = parse_jsonl_records(line)
+    return recs[-1] if recs else None
 
 
 def read_jsonl(path):
@@ -198,9 +206,7 @@ def read_jsonl(path):
     first row, so callers that want to know can catch it; use rows_of() for 'no file = no rows'."""
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
-            obj = parse_jsonl_line(line)
-            if obj is not None:
-                yield obj
+            yield from parse_jsonl_records(line)
 
 
 _append_checked = set()      # files checked by this program; a failed write takes the file out (it may end cut)
